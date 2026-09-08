@@ -1,0 +1,452 @@
+"""
+AuFarm — submitter.py
+
+Flag auto-submission engine.
+
+Responsibilities:
+  1. Extract flags from exploit stdout using a configurable regex.
+  2. Deduplicate via the `flags` table (UNIQUE constraint on flag text).
+  3. Run a periodic submission loop that batches QUEUED flags and sends
+     them to the scoring server.
+  4. Support three submission modes (matching both reference examples):
+       http_json — POST {"flags": [...]}  (Siberlab / CTFd-style)
+       http_form — POST flag=<value>       (simple form POST)
+       tcp       — raw TCP line-by-line    (ForcAD / classic gameserver)
+  5. Expire flags that are older than flag_lifetime without submitting
+     (marks them EXPIRED so they don't pile up forever).
+
+The loop runs independently of the farm scheduler — flags are queued by
+_execute_exploit() after each job, then submitted by the loop every
+submit_interval seconds.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import socket
+from datetime import datetime, timezone
+from typing import Optional
+
+import aiohttp
+
+from database import get_db
+from scheduler import broadcaster
+
+logger = logging.getLogger("aufarm.submitter")
+
+# ── Status constants ──────────────────────────────────────────────────────────
+
+class FlagStatus:
+    QUEUED   = "QUEUED"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    DUPLICATE= "DUPLICATE"
+    EXPIRED  = "EXPIRED"
+    ERROR    = "ERROR"
+
+
+# ── Config helper ─────────────────────────────────────────────────────────────
+
+async def _get_submit_cfg() -> dict:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT key, value FROM farm_config WHERE key IN "
+            "('submit_enabled','submit_mode','submit_url','submit_token',"
+            " 'submit_host','submit_port','flag_regex','submit_interval','flag_lifetime')"
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    finally:
+        await db.close()
+
+
+# ── Flag extraction ───────────────────────────────────────────────────────────
+
+def extract_flags(text: str, pattern: str) -> list[str]:
+    """
+    Pull every unique flag out of `text` using the configured regex.
+    Falls back to a common default if the pattern is empty or invalid.
+    """
+    if not pattern:
+        pattern = r"[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,}\}"
+    try:
+        return list(set(re.findall(pattern, text)))
+    except re.error as e:
+        logger.warning("Bad flag regex %r: %s", pattern, e)
+        return []
+
+
+async def queue_flags(
+    flags: list[str],
+    *,
+    exploit_name: str,
+    target_host: str,
+    target_name: str,
+    tick: int,
+) -> int:
+    """
+    Insert newly discovered flags into the flags table (dedup via UNIQUE).
+    Returns the count of genuinely new flags inserted.
+    """
+    if not flags:
+        return 0
+
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = 0
+    db = await get_db()
+    try:
+        for flag in flags:
+            try:
+                await db.execute(
+                    """
+                    INSERT OR IGNORE INTO flags
+                        (flag, exploit_name, target_host, target_name, tick,
+                         status, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'QUEUED', ?)
+                    """,
+                    (flag, exploit_name, target_host, target_name, tick, now)
+                )
+                if db.total_changes > 0:
+                    inserted += 1
+            except Exception:
+                pass
+        await db.commit()
+    finally:
+        await db.close()
+
+    if inserted:
+        broadcaster.publish({
+            "type": "flags_queued",
+            "data": {
+                "count": inserted,
+                "exploit_name": exploit_name,
+                "target_host": target_host,
+                "tick": tick,
+                "flags": flags[:10],   # preview, not full list for large outputs
+            }
+        })
+    return inserted
+
+
+# ── HTTP submission ───────────────────────────────────────────────────────────
+
+async def _submit_http_json(
+    flags: list[str],
+    url: str,
+    token: str,
+    timeout: int = 10,
+) -> list[tuple[str, str, str]]:
+    """
+    POST {"flags": [flag1, flag2, ...]}
+    Returns list of (flag, status, response_text).
+
+    Handles two common response shapes:
+      • {"submitFlagResults": [{"flag":…, "valid":true, "status":"STATUS_OK"}]}
+      • {"status": "accepted"} / plain HTTP 200
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+        "X-Team-Token": token,
+    }
+    results = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json={"flags": flags},
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+            ) as resp:
+                body = await resp.text()
+                http_ok = resp.status < 400
+
+                # Try to parse structured JSON response
+                try:
+                    import json as _json
+                    data = _json.loads(body)
+
+                    # Siberlab / polriCTF style
+                    sfr = data.get("submitFlagResults") or data.get("results") or []
+                    if sfr and isinstance(sfr, list):
+                        for item in sfr:
+                            flag = item.get("flag", "")
+                            valid = item.get("valid", False)
+                            st = str(item.get("status", ""))
+                            if valid or "OK" in st or "ACCEPT" in st:
+                                flag_st = FlagStatus.ACCEPTED
+                            elif "ALREADY" in st or "DUP" in st or "OWNED" in st:
+                                flag_st = FlagStatus.DUPLICATE
+                            else:
+                                flag_st = FlagStatus.REJECTED
+                            results.append((flag, flag_st, st))
+                        return results
+
+                    # CTFd style: {"success": true}
+                    if "success" in data:
+                        st = FlagStatus.ACCEPTED if data["success"] else FlagStatus.REJECTED
+                        for f in flags:
+                            results.append((f, st, body[:120]))
+                        return results
+
+                except Exception:
+                    pass
+
+                # Fallback: treat HTTP 2xx as accepted
+                body_lower = body.lower()
+                if not http_ok:
+                    flag_st = FlagStatus.ERROR
+                elif any(k in body_lower for k in ("already", "duplicate", "dup", "owned")):
+                    flag_st = FlagStatus.DUPLICATE
+                elif any(k in body_lower for k in ("reject", "invalid", "wrong", "bad")):
+                    flag_st = FlagStatus.REJECTED
+                else:
+                    flag_st = FlagStatus.ACCEPTED
+
+                for f in flags:
+                    results.append((f, flag_st, body[:120]))
+
+    except Exception as exc:
+        logger.warning("HTTP submission error: %s", exc)
+        for f in flags:
+            results.append((f, FlagStatus.ERROR, str(exc)[:120]))
+    return results
+
+
+async def _submit_http_form(
+    flags: list[str],
+    url: str,
+    token: str,
+    timeout: int = 10,
+) -> list[tuple[str, str, str]]:
+    """POST flag=<value> for each flag individually."""
+    results = []
+    headers = {"Authorization": f"Bearer {token}", "X-Team-Token": token}
+    try:
+        async with aiohttp.ClientSession() as session:
+            for flag in flags:
+                try:
+                    async with session.post(
+                        url,
+                        data={"flag": flag},
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as resp:
+                        body = await resp.text()
+                        body_lower = body.lower()
+                        if resp.status >= 400:
+                            st = FlagStatus.ERROR
+                        elif any(k in body_lower for k in ("already", "dup", "owned")):
+                            st = FlagStatus.DUPLICATE
+                        elif any(k in body_lower for k in ("reject", "invalid", "wrong")):
+                            st = FlagStatus.REJECTED
+                        else:
+                            st = FlagStatus.ACCEPTED
+                        results.append((flag, st, body[:120]))
+                except Exception as exc:
+                    results.append((flag, FlagStatus.ERROR, str(exc)[:120]))
+    except Exception as exc:
+        for f in flags:
+            results.append((f, FlagStatus.ERROR, str(exc)[:120]))
+    return results
+
+
+def _submit_tcp_sync(
+    flags: list[str],
+    host: str,
+    port: int,
+    timeout: int = 10,
+) -> list[tuple[str, str, str]]:
+    """
+    Raw TCP submission: connect, send each flag as a line, read response.
+    Blocking — called via asyncio.to_thread().
+    """
+    results = []
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            # Some gameservers send a banner first
+            try:
+                s.recv(1024)
+            except socket.timeout:
+                pass
+
+            for flag in flags:
+                try:
+                    s.sendall(flag.encode() + b"\n")
+                    resp = b""
+                    while True:
+                        try:
+                            chunk = s.recv(256)
+                            if not chunk:
+                                break
+                            resp += chunk
+                            if b"\n" in resp:
+                                break
+                        except socket.timeout:
+                            break
+                    resp_text = resp.decode(errors="replace").strip()
+                    resp_lower = resp_text.lower()
+                    if any(k in resp_lower for k in ("accepted", "ok", "correct", "got it")):
+                        st = FlagStatus.ACCEPTED
+                    elif any(k in resp_lower for k in ("already", "dup", "owned")):
+                        st = FlagStatus.DUPLICATE
+                    else:
+                        st = FlagStatus.REJECTED
+                    results.append((flag, st, resp_text[:120]))
+                except Exception as exc:
+                    results.append((flag, FlagStatus.ERROR, str(exc)[:80]))
+    except Exception as exc:
+        for f in flags:
+            results.append((f, FlagStatus.ERROR, str(exc)[:80]))
+    return results
+
+
+# ── Submission dispatcher ─────────────────────────────────────────────────────
+
+async def _submit_batch(
+    flags: list[str],
+    cfg: dict,
+) -> list[tuple[str, str, str]]:
+    """Route to the right submission backend based on config."""
+    mode  = cfg.get("submit_mode", "http_json")
+    url   = cfg.get("submit_url", "")
+    token = cfg.get("submit_token", "")
+    host  = cfg.get("submit_host", "")
+    port  = int(cfg.get("submit_port", 31337))
+
+    if mode == "http_json":
+        return await _submit_http_json(flags, url, token)
+    elif mode == "http_form":
+        return await _submit_http_form(flags, url, token)
+    elif mode == "tcp":
+        return await asyncio.to_thread(_submit_tcp_sync, flags, host, port)
+    else:
+        return [(f, FlagStatus.ERROR, f"Unknown mode: {mode}") for f in flags]
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
+async def _expire_old_flags(lifetime_sec: int) -> None:
+    """Mark QUEUED flags older than lifetime_sec as EXPIRED."""
+    db = await get_db()
+    try:
+        await db.execute(
+            """
+            UPDATE flags SET status = 'EXPIRED'
+            WHERE status = 'QUEUED'
+              AND (strftime('%s', 'now') - strftime('%s', created_at)) > ?
+            """,
+            (lifetime_sec,)
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def _fetch_queued(limit: int = 200) -> list[dict]:
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id, flag, exploit_name, target_host FROM flags WHERE status = 'QUEUED' LIMIT ?",
+            (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def _update_flag_statuses(
+    results: list[tuple[str, str, str]]
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    db = await get_db()
+    try:
+        for flag, status, response in results:
+            await db.execute(
+                "UPDATE flags SET status = ?, response = ?, submitted_at = ? WHERE flag = ?",
+                (status, response, now, flag)
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+# ── Submission loop ───────────────────────────────────────────────────────────
+
+class Submitter:
+    """
+    Background task that periodically submits queued flags.
+    Runs independently of the farm scheduler.
+    """
+
+    def __init__(self) -> None:
+        self._task: Optional[asyncio.Task] = None
+
+    def start(self) -> None:
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._loop(), name="flag-submitter")
+            logger.info("Flag submitter started")
+
+    def stop(self) -> None:
+        if self._task and not self._task.done():
+            self._task.cancel()
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await self._run_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Submitter loop error: %s", exc)
+
+            cfg = await _get_submit_cfg()
+            interval = max(2, int(cfg.get("submit_interval", 5)))
+            await asyncio.sleep(interval)
+
+    async def _run_once(self) -> None:
+        cfg = await _get_submit_cfg()
+
+        # Always expire stale flags regardless of submit_enabled
+        lifetime = max(30, int(cfg.get("flag_lifetime", 300)))
+        await _expire_old_flags(lifetime)
+
+        if cfg.get("submit_enabled", "0") != "1":
+            return
+
+        queued = await _fetch_queued(limit=200)
+        if not queued:
+            return
+
+        flags = [r["flag"] for r in queued]
+        logger.info("Submitting %d flag(s)", len(flags))
+
+        results = await _submit_batch(flags, cfg)
+        await _update_flag_statuses(results)
+
+        accepted  = sum(1 for _, st, _ in results if st == FlagStatus.ACCEPTED)
+        rejected  = sum(1 for _, st, _ in results if st == FlagStatus.REJECTED)
+        duplicate = sum(1 for _, st, _ in results if st == FlagStatus.DUPLICATE)
+        errors    = sum(1 for _, st, _ in results if st == FlagStatus.ERROR)
+
+        summary = {
+            "submitted": len(results),
+            "accepted":  accepted,
+            "rejected":  rejected,
+            "duplicate": duplicate,
+            "errors":    errors,
+        }
+        broadcaster.publish({"type": "flags_submitted", "data": summary})
+
+        if accepted:
+            logger.info("Flags: %d accepted, %d rejected, %d dup, %d err",
+                        accepted, rejected, duplicate, errors)
+
+
+# Global singleton — started by main.py lifespan
+submitter = Submitter()

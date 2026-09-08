@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AuFarm — CTF Attack & Defense Farm</title>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --bg2:     #161b22;
+    --bg3:     #21262d;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --muted:   #8b949e;
+    --green:   #3fb950;
+    --red:     #f85149;
+    --yellow:  #d29922;
+    --blue:    #58a6ff;
+    --orange:  #e3b341;
+    --purple:  #a371f7;
+    --cyan:    #39d353;
+    --accent:  #238636;
+    --radius:  6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────────── */
+  .layout { display: flex; height: 100vh; overflow: hidden; }
+  .sidebar {
+    width: 220px; min-width: 180px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 16px 0;
+    overflow-y: auto;
+  }
+  .main { flex: 1; overflow-y: auto; padding: 20px; }
+
+  /* ── Sidebar ─────────────────────────────────────────────────── */
+  .sidebar-logo {
+    padding: 0 16px 16px;
+    font-size: 18px; font-weight: 700;
+    color: var(--blue);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .sidebar-logo span { color: var(--muted); font-size: 11px; display: block; }
+  .nav-item {
+    display: block; padding: 8px 16px;
+    color: var(--muted); cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 0.1s;
+    text-decoration: none;
+  }
+  .nav-item:hover { color: var(--text); background: var(--bg3); }
+  .nav-item.active { color: var(--text); border-left-color: var(--blue); background: var(--bg3); }
+  .nav-section {
+    padding: 12px 16px 4px;
+    font-size: 11px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  /* ── Farm Status Bar ─────────────────────────────────────────── */
+  .status-bar {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .status-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .status-RUNNING  { background: #196c2e; color: #3fb950; }
+  .status-STOPPED  { background: #3d1818; color: #f85149; }
+  .status-PAUSED   { background: #3d2d06; color: #d29922; }
+  .status-stat { color: var(--muted); font-size: 13px; }
+  .status-stat strong { color: var(--text); }
+  .status-spacer { flex: 1; }
+
+  /* ── Controls ────────────────────────────────────────────────── */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  button {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg3);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.1s;
+  }
+  button:hover { border-color: var(--blue); color: var(--blue); }
+  button.btn-green { background: var(--accent); border-color: var(--green); color: #fff; }
+  button.btn-green:hover { background: #2ea043; }
+  button.btn-red { background: #b62324; border-color: var(--red); color: #fff; }
+  button.btn-red:hover { background: #da3633; }
+  button.btn-yellow { background: #5e3c01; border-color: var(--yellow); color: #fff; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Cards ───────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 12px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+  }
+  .stat-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    text-align: center;
+  }
+  .stat-item .val { font-size: 22px; font-weight: 700; }
+  .stat-item .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .val-green   { color: var(--green); }
+  .val-red     { color: var(--red); }
+  .val-yellow  { color: var(--yellow); }
+  .val-blue    { color: var(--blue); }
+  .val-orange  { color: var(--orange); }
+  .val-purple  { color: var(--purple); }
+
+  /* ── Tables ──────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  tr:hover td { background: var(--bg3); }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-SUCCESS  { background:#163a20; color: #3fb950; }
+  .badge-FAILED   { background:#3d1010; color: #f85149; }
+  .badge-TIMEOUT  { background:#3d2d06; color: #d29922; }
+  .badge-CRASHED  { background:#3d1818; color: #f08080; }
+  .badge-SKIPPED  { background:#1c2128; color: #8b949e; }
+  .badge-CANCELLED{ background:#2a1c3a; color: #a371f7; }
+  .badge-RUNNING  { background:#1a3149; color: #58a6ff; }
+
+  /* ── Forms ───────────────────────────────────────────────────── */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: var(--muted); }
+  input, select, textarea {
+    padding: 6px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--blue);
+  }
+  textarea { resize: vertical; font-family: 'Courier New', monospace; font-size: 12px; }
+  .form-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+  /* ── Tabs ────────────────────────────────────────────────────── */
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 8px 14px;
+    cursor: pointer; color: var(--muted);
+    border-bottom: 2px solid transparent;
+    font-size: 13px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Modal ───────────────────────────────────────────────────── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    width: 620px; max-width: 95vw;
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
+  .modal-close {
+    float: right; cursor: pointer;
+    font-size: 20px; color: var(--muted);
+    border: none; background: none; color: var(--text);
+  }
+
+  /* ── Log terminal ────────────────────────────────────────────── */
+  .log-area {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    height: 260px; overflow-y: auto;
+    color: #c9d1d9;
+  }
+  .log-entry { margin-bottom: 2px; }
+  .log-entry.success  { color: var(--green); }
+  .log-entry.failed   { color: var(--red); }
+  .log-entry.timeout  { color: var(--yellow); }
+  .log-entry.info     { color: var(--muted); }
+  .log-entry.tick     { color: var(--blue); font-weight: 600; }
+
+  /* ── Code editor ─────────────────────────────────────────────── */
+  .code-editor {
+    width: 100%; height: 320px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    font-family: 'Courier New', monospace; font-size: 12px;
+    color: #c9d1d9; resize: vertical;
+  }
+
+  /* ── Result row click ────────────────────────────────────────── */
+  .clickable { cursor: pointer; }
+  .clickable:hover td { background: #1c2128 !important; }
+
+  /* ── Connection indicator ────────────────────────────────────── */
+  .conn-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--red);
+  }
+  .conn-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
+  }
+
+  /* ── Pages ───────────────────────────────────────────────────── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Tick progress ───────────────────────────────────────────── */
+  .progress-bar-bg {
+    background: var(--bg3); border-radius: 4px;
+    height: 8px; width: 100%; overflow: hidden; margin-top: 4px;
+  }
+  .progress-bar-fill {
+    background: var(--blue);
+    height: 100%; border-radius: 4px;
+    transition: width 0.3s;
+  }
+
+  /* ── Responsive ──────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .sidebar { width: 48px; }
+    .sidebar-logo, .nav-section, .nav-label { display: none; }
+    .main { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      ⚔ AuFarm
+      <span>A&D CTF Farm</span>
+    </div>
+    <span class="nav-section">Farm</span>
+    <a class="nav-item active" data-page="dashboard">📊 Dashboard</a>
+    <a class="nav-item" data-page="results">📋 Results</a>
+    <a class="nav-item" data-page="flags">🚩 Flags <span id="navFlagBadge" style="font-size:10px;background:#196c2e;color:#3fb950;padding:1px 5px;border-radius:8px;display:none"></span></a>
+    <span class="nav-section">Config</span>
+    <a class="nav-item" data-page="exploits">🔧 Exploits</a>
+    <a class="nav-item" data-page="targets">🎯 Targets</a>
+    <a class="nav-item" data-page="config">⚙ Settings</a>
+  </aside>
+
+  <!-- ── Main content ── -->
+  <main class="main">
+
+    <!-- ── Status bar ── -->
+    <div class="status-bar" id="statusBar">
+      <span class="conn-dot" id="connDot"></span>
+      <span id="farmStatusBadge" class="status-badge status-STOPPED">STOPPED</span>
+      <span class="status-stat">Tick: <strong id="sbTick">0</strong> / <strong id="sbTotal">-</strong></span>
+      <span class="status-stat">Running: <strong id="sbRunning">0</strong></span>
+      <span class="status-stat">✅ <strong id="sbSuccess">0</strong></span>
+      <span class="status-stat">❌ <strong id="sbFailed">0</strong></span>
+      <span class="status-stat">⏱ <strong id="sbTimeout">0</strong></span>
+      <div class="status-spacer"></div>
+      <span style="font-size:12px;color:var(--muted)" id="wsStatus">Connecting…</span>
+    </div>
+
+    <!-- ── Dashboard Page ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="controls">
+        <button class="btn-green" onclick="farmAction('start')" id="btnStart">▶ START</button>
+        <button class="btn-red"   onclick="farmAction('stop')"  id="btnStop" disabled>■ STOP</button>
+        <button class="btn-yellow" onclick="farmAction('pause')" id="btnPause" disabled>⏸ PAUSE</button>
+        <button onclick="farmAction('resume')" id="btnResume" disabled>▷ RESUME</button>
+        <button onclick="farmAction('tick')"  id="btnTick">⚡ ONE TICK</button>
+        <button onclick="farmAction('reset')" id="btnReset">🔄 RESET</button>
+      </div>
+
+      <!-- Stats cards -->
+      <div class="card">
+        <div class="card-title">Execution Statistics</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="val val-blue" id="statTick">0</div>
+            <div class="label">Current Tick</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-blue" id="statRunning">0</div>
+            <div class="label">Running Jobs</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-green" id="statSuccess">0</div>
+            <div class="label">Success</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-red" id="statFailed">0</div>
+            <div class="label">Failed</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-yellow" id="statTimeout">0</div>
+            <div class="label">Timeout</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-orange" id="statCrashed">0</div>
+            <div class="label">Crashed</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-purple" id="statSkipped">0</div>
+            <div class="label">Skipped</div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+            Tick progress: <span id="statTickPct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="tickProgress" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live log -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          Live Feed
+          <button onclick="clearLog()" style="font-size:11px;padding:2px 8px">Clear</button>
+        </div>
+        <div class="log-area" id="liveLog"></div>
+      </div>
+
+      <!-- Recent results table -->
+      <div class="card">
+        <div class="card-title">Recent Executions</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tick</th><th>Exploit</th><th>Target</th>
+                <th>Status</th><th>Duration</th><th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="recentResults"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Results Page ── -->
+    <div class="page" id="page-results">
+      <div class="card">
+        <div class="card-title">Execution History</div>
+        <!-- Filters -->
+        <div class="form-grid" style="margin-bottom:10px">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="filterStatus">
+              <option value="">All</option>
+              <option>SUCCESS</option><option>FAILED</option>
+              <option>TIMEOUT</option><option>CRASHED</option>
+              <option>SKIPPED</option><option>CANCELLED</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tick</label>
+            <input type="number" id="filterTick" placeholder="any">
+          </div>
+          <div class="form-group" style="align-self:end">
+            <button onclick="loadResults()">🔍 Filter</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Tick</th><th>Exploit</th><th>Target</th>
+                <th>Status</th><th>Exit</th><th>Duration</th><th>Started</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button onclick="resultsPrev()">← Prev</button>
+          <span id="resultsPagination" style="color:var(--muted);font-size:12px"></span>
+          <button onclick="resultsNext()">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Exploits Page ── -->
+    <div class="page" id="page-exploits">
+      <div class="card">
+        <div class="card-title">Exploits</div>
+
+        <div class="tab-bar">
+          <div class="tab active" data-tab="exploit-list">List</div>
+          <div class="tab" data-tab="exploit-add">+ Add Exploit</div>
+        </div>
+
+        <div class="tab-content active" id="tab-exploit-list">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th><th>Name</th><th>File</th><th>Runtime</th>
+                  <th>Timeout</th><th>Targets</th><th>Enabled</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="exploitsTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-exploit-add">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Name *</label>
+              <input id="expName" placeholder="web_rce">
+            </div>
+            <div class="form-group">
+              <label>Filename *</label>
+              <input id="expFilename" placeholder="web_rce.py">
+            </div>
+            <div class="form-group">
+              <label>Runtime</label>
+              <input id="expRuntime" value="python3">
+            </div>
+            <div class="form-group">
+              <label>Extra Args</label>
+              <input id="expArgs" placeholder="">
+            </div>
+            <div class="form-group">
+              <label>Timeout (s)</label>
+              <input type="number" id="expTimeout" value="30">
+            </div>
+            <div class="form-group">
+              <label>Enabled</label>
+              <select id="expEnabled">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-bottom:8px">
+            <div class="tab-bar" style="border-bottom:none;margin-bottom:6px">
+              <div class="tab active" data-tab="source-paste">Paste Source</div>
+              <div class="tab" data-tab="source-upload">Upload File</div>
+            </div>
+            <div class="tab-content active" id="tab-source-paste">
+              <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">
+                Exploit Source Code
+              </label>
+              <textarea class="code-editor" id="expSource" placeholder="#!/usr/bin/env python3
+# AuFarm exploit template
+# Args: target_host [port]
+import sys, socket
+
+host = sys.argv[1]
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 80
+
+# TODO: implement exploit
+print(f'Attacking {host}:{port}')
+"></textarea>
+            </div>
+            <div class="tab-content" id="tab-source-upload">
+              <input type="file" id="expFileUpload" style="margin-top:4px">
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn-green" onclick="createExploit()">💾 Save Exploit</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Targets Page ── -->
+    <div class="page" id="page-targets">
+      <div class="card">
+        <div class="card-title">Targets</div>
+
+        <div class="tab-bar">
+          <div class="tab active" data-tab="target-list">List</div>
+          <div class="tab" data-tab="target-add">+ Add Target</div>
+        </div>
+
+        <div class="tab-content active" id="tab-target-list">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th><th>Name</th><th>Host / IP</th>
+                  <th>Port</th><th>Service</th><th>Enabled</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="targetsTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-target-add">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Name *</label>
+              <input id="tgtName" placeholder="Team 1">
+            </div>
+            <div class="form-group">
+              <label>Host / IP *</label>
+              <input id="tgtHost" placeholder="10.10.10.11">
+            </div>
+            <div class="form-group">
+              <label>Port</label>
+              <input type="number" id="tgtPort" placeholder="8080">
+            </div>
+            <div class="form-group">
+              <label>Service</label>
+              <input id="tgtService" placeholder="web">
+            </div>
+            <div class="form-group">
+              <label>Enabled</label>
+              <select id="tgtEnabled">
+                <option value="1">Yes</option>
+                <option value="0">No</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-green" onclick="createTarget()">➕ Add Target</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Config Page ── -->
+    <div class="page" id="page-config">
+      <div class="card">
+        <div class="card-title">Farm Settings</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Tick Count (0 = continuous)</label>
+            <input type="number" id="cfgTickCount" value="100">
+          </div>
+          <div class="form-group">
+            <label>Tick Interval (seconds)</label>
+            <input type="number" id="cfgTickInterval" value="60">
+          </div>
+          <div class="form-group">
+            <label>Default Exploit Timeout (seconds)</label>
+            <input type="number" id="cfgExploitTimeout" value="30">
+          </div>
+          <div class="form-group">
+            <label>Concurrency (max parallel jobs)</label>
+            <input type="number" id="cfgConcurrency" value="20">
+          </div>
+          <div class="form-group">
+            <label>Continuous Mode</label>
+            <select id="cfgContinuous">
+              <option value="0">No (use tick count)</option>
+              <option value="1">Yes (run forever)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-green" onclick="saveConfig()">💾 Save Settings</button>
+          <button onclick="loadConfig()">↩ Reload</button>
+        </div>
+        <div id="cfgMsg" style="margin-top:8px;font-size:12px;color:var(--green)"></div>
+      </div>
+
+      <!-- ── Submission Config ── -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          Flag Auto-Submission
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;text-transform:none;letter-spacing:0">
+            <input type="checkbox" id="subEnabled" onchange="toggleSubmitEnabled(this.checked)" style="width:16px;height:16px;cursor:pointer">
+            <span style="color:var(--text);font-size:13px">Enabled</span>
+          </label>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Mode</label>
+            <select id="subMode" onchange="updateSubModeUI()">
+              <option value="http_json">HTTP JSON — POST {"flags":[…]}</option>
+              <option value="http_form">HTTP Form — POST flag=…</option>
+              <option value="tcp">TCP — raw line per flag</option>
+            </select>
+          </div>
+          <div class="form-group" id="subUrlGroup">
+            <label>Submit URL</label>
+            <input id="subUrl" placeholder="https://scoreboard/api/v1/flags">
+          </div>
+          <div class="form-group" id="subTokenGroup">
+            <label>API Token / Bearer</label>
+            <input id="subToken" placeholder="team-xxx-yyy" type="password">
+          </div>
+          <div class="form-group" id="subHostGroup" style="display:none">
+            <label>Submit Host</label>
+            <input id="subHost" placeholder="10.10.0.1">
+          </div>
+          <div class="form-group" id="subPortGroup" style="display:none">
+            <label>Submit Port</label>
+            <input type="number" id="subPort" value="31337">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Flag Regex <span style="color:var(--muted);font-weight:normal">(leave blank for default)</span></label>
+            <input id="subRegex" placeholder="polriCTF\{[^}]+\}" style="font-family:monospace">
+          </div>
+          <div class="form-group">
+            <label>Submit Interval (seconds)</label>
+            <input type="number" id="subInterval" value="5">
+          </div>
+          <div class="form-group">
+            <label>Flag Lifetime (seconds)</label>
+            <input type="number" id="subLifetime" value="300">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn-green" onclick="saveSubmitConfig()">💾 Save Submission Settings</button>
+          <button onclick="loadSubmitConfig()">↩ Reload</button>
+          <button onclick="submitNow()" style="margin-left:auto">⚡ Submit Now</button>
+        </div>
+        <div id="subMsg" style="margin-top:8px;font-size:12px;color:var(--green)"></div>
+      </div>
+    </div>
+
+    <!-- ── Flags Page ── -->
+    <div class="page" id="page-flags">
+      <!-- Stats cards -->
+      <div class="card">
+        <div class="card-title">Flag Collection Stats</div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="val val-blue" id="fstatTotal">0</div>
+            <div class="label">Total Found</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-yellow" id="fstatQueued">0</div>
+            <div class="label">Queued</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-green" id="fstatAccepted">0</div>
+            <div class="label">Accepted</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-red" id="fstatRejected">0</div>
+            <div class="label">Rejected</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-muted" id="fstatDuplicate">0</div>
+            <div class="label">Duplicate</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-orange" id="fstatExpired">0</div>
+            <div class="label">Expired</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-red" id="fstatError">0</div>
+            <div class="label">Error</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter + table -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          Flag History
+          <div style="display:flex;gap:8px">
+            <select id="flagFilterStatus" style="padding:4px 8px;font-size:12px">
+              <option value="">All Statuses</option>
+              <option>QUEUED</option><option>ACCEPTED</option>
+              <option>REJECTED</option><option>DUPLICATE</option>
+              <option>EXPIRED</option><option>ERROR</option>
+            </select>
+            <button onclick="loadFlags()" style="font-size:12px;padding:4px 10px">🔍 Filter</button>
+            <button onclick="submitNow()" style="font-size:12px;padding:4px 10px;color:var(--green)">⚡ Submit Now</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Flag</th><th>Exploit</th><th>Target</th>
+                <th>Tick</th><th>Status</th><th>Response</th><th>Found</th>
+              </tr>
+            </thead>
+            <tbody id="flagsTable"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button onclick="flagsPrev()">← Prev</button>
+          <span id="flagsPagination" style="color:var(--muted);font-size:12px"></span>
+          <button onclick="flagsNext()">Next →</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Result Detail Modal ── -->
+<div class="modal-overlay" id="resultModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title">Execution Detail</div>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<!-- ── Exploit Edit Modal ── -->
+<div class="modal-overlay" id="exploitModal">
+  <div class="modal" style="width:700px">
+    <button class="modal-close" onclick="closeExploitModal()">✕</button>
+    <div class="modal-title" id="exploitModalTitle">Edit Exploit</div>
+    <div id="exploitModalContent"></div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  farmStatus: 'STOPPED',
+  currentTick: 0,
+  tickCount: 100,
+  runningJobs: 0,
+  stats: {},
+  recentResults: [],
+  resultsOffset: 0,
+  resultsLimit: 50,
+  resultsTotal: 0,
+  ws: null,
+};
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/ws`;
+  const ws = new WebSocket(url);
+  state.ws = ws;
+
+  ws.onopen = () => {
+    document.getElementById('wsStatus').textContent = 'Connected';
+    document.getElementById('connDot').classList.add('connected');
+    addLog('🔌 Connected to farm server', 'info');
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      handleWSMessage(msg);
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsStatus').textContent = 'Disconnected — reconnecting…';
+    document.getElementById('connDot').classList.remove('connected');
+    addLog('⚡ WebSocket disconnected, reconnecting in 3s…', 'info');
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+function handleWSMessage(msg) {
+  if (msg.type === 'ping') return;
+
+  if (msg.type === 'status' || msg.type === 'tick_start') {
+    if (msg.data) updateStatusUI(msg.data);
+  }
+
+  if (msg.type === 'job_done') {
+    const r = msg.data;
+    addLog(
+      `[Tick ${r.tick}] ${r.exploit_name} → ${r.target_name} (${r.target_host}) — ${r.status}` +
+      (r.duration_ms ? ` [${r.duration_ms}ms]` : ''),
+      r.status === 'SUCCESS' ? 'success' :
+      r.status === 'TIMEOUT' ? 'timeout' :
+      r.status.includes('FAIL') || r.status === 'CRASHED' ? 'failed' : 'info'
+    );
+    prependRecentResult(r);
+    // Refresh stats
+    fetchStatus();
+  }
+
+  if (msg.type === 'tick_start') {
+    addLog(`━━━ Tick ${msg.data.tick} / ${msg.data.tick_count} ━━━`, 'tick');
+  }
+
+  if (msg.type === 'job_start') {
+    const d = msg.data;
+    addLog(`  ↳ Starting: ${d.exploit_name} → ${d.target_name} (${d.target_host})`, 'info');
+  }
+
+  if (msg.type === 'flags_queued') {
+    const d = msg.data;
+    addLog(
+      `🚩 ${d.count} flag(s) found — ${d.exploit_name} → ${d.target_host} [tick ${d.tick}]`,
+      'success'
+    );
+    fetchFlagStats();
+  }
+
+  if (msg.type === 'flags_submitted') {
+    const d = msg.data;
+    if (d.submitted > 0) {
+      addLog(
+        `📤 Submission: ${d.accepted} accepted, ${d.rejected} rejected, ${d.duplicate} dup, ${d.errors} err`,
+        d.accepted > 0 ? 'success' : (d.rejected > 0 ? 'failed' : 'info')
+      );
+      fetchFlagStats();
+    }
+  }
+}
+
+
+// ── Status UI ─────────────────────────────────────────────────────────────────
+function updateStatusUI(d) {
+  state.farmStatus  = d.status || state.farmStatus;
+  state.currentTick = d.current_tick ?? state.currentTick;
+  state.tickCount   = d.tick_count   ?? state.tickCount;
+  state.runningJobs = d.running_jobs ?? state.runningJobs;
+  state.stats       = d.stats        || state.stats;
+
+  const badge = document.getElementById('farmStatusBadge');
+  badge.textContent = state.farmStatus;
+  badge.className = `status-badge status-${state.farmStatus}`;
+
+  document.getElementById('sbTick').textContent    = state.currentTick;
+  document.getElementById('sbTotal').textContent   = state.farmStatus === 'RUNNING' || state.tickCount ? state.tickCount : '-';
+  document.getElementById('sbRunning').textContent = state.runningJobs;
+  document.getElementById('sbSuccess').textContent = state.stats.success  ?? 0;
+  document.getElementById('sbFailed').textContent  = state.stats.failed   ?? 0;
+  document.getElementById('sbTimeout').textContent = state.stats.timeout  ?? 0;
+
+  document.getElementById('statTick').textContent    = state.currentTick;
+  document.getElementById('statRunning').textContent = state.runningJobs;
+  document.getElementById('statSuccess').textContent = state.stats.success  ?? 0;
+  document.getElementById('statFailed').textContent  = state.stats.failed   ?? 0;
+  document.getElementById('statTimeout').textContent = state.stats.timeout  ?? 0;
+  document.getElementById('statCrashed').textContent = state.stats.crashed  ?? 0;
+  document.getElementById('statSkipped').textContent = state.stats.skipped  ?? 0;
+
+  const pct = state.tickCount > 0
+    ? Math.min(100, Math.round(state.currentTick / state.tickCount * 100))
+    : 0;
+  document.getElementById('tickProgress').style.width = pct + '%';
+  document.getElementById('statTickPct').textContent = pct + '%';
+
+  // Update buttons
+  const running = state.farmStatus === 'RUNNING';
+  const paused  = state.farmStatus === 'PAUSED';
+  document.getElementById('btnStart').disabled  = running || paused;
+  document.getElementById('btnStop').disabled   = !running && !paused;
+  document.getElementById('btnPause').disabled  = !running;
+  document.getElementById('btnResume').disabled = !paused;
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    updateStatusUI(d);
+  } catch {}
+}
+
+// ── Farm Actions ─────────────────────────────────────────────────────────────
+async function farmAction(action) {
+  try {
+    const r = await fetch(`/api/farm/${action}`, { method: 'POST' });
+    if (!r.ok) {
+      const e = await r.json();
+      addLog(`⚠ ${action}: ${e.detail || r.statusText}`, 'failed');
+    } else {
+      await fetchStatus();
+    }
+  } catch(e) {
+    addLog(`⚠ ${action} failed: ${e}`, 'failed');
+  }
+}
+
+// ── Log ───────────────────────────────────────────────────────────────────────
+const MAX_LOG_LINES = 500;
+function addLog(msg, cls='info') {
+  const el = document.getElementById('liveLog');
+  const line = document.createElement('div');
+  line.className = `log-entry ${cls}`;
+  const ts = new Date().toTimeString().slice(0,8);
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  // Trim old lines
+  while (el.children.length > MAX_LOG_LINES) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('liveLog').innerHTML = ''; }
+
+// ── Recent Results ────────────────────────────────────────────────────────────
+const MAX_RECENT = 100;
+function prependRecentResult(r) {
+  state.recentResults.unshift(r);
+  if (state.recentResults.length > MAX_RECENT) state.recentResults.pop();
+  renderRecentResults();
+}
+
+function renderRecentResults() {
+  const tbody = document.getElementById('recentResults');
+  tbody.innerHTML = state.recentResults.slice(0, 50).map(r => `
+    <tr class="clickable" onclick="showResult(${r.id || ''}, ${JSON.stringify(r).replace(/"/g,'&quot;')})">
+      <td>${r.tick}</td>
+      <td>${esc(r.exploit_name)}</td>
+      <td>${esc(r.target_name)} <span style="color:var(--muted)">${esc(r.target_host)}</span></td>
+      <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      <td>${r.duration_ms != null ? r.duration_ms + 'ms' : '-'}</td>
+      <td style="color:var(--muted)">${r.started_at ? r.started_at.split('T')[1]?.slice(0,8) : ''}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Results Page ─────────────────────────────────────────────────────────────
+async function loadResults() {
+  state.resultsOffset = 0;
+  await fetchResults();
+}
+
+async function fetchResults() {
+  const status = document.getElementById('filterStatus').value;
+  const tick   = document.getElementById('filterTick').value;
+  let url = `/api/results?limit=${state.resultsLimit}&offset=${state.resultsOffset}`;
+  if (status) url += `&status=${status}`;
+  if (tick)   url += `&tick=${tick}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  state.resultsTotal = d.total;
+  renderResultsTable(d.results);
+  document.getElementById('resultsPagination').textContent =
+    `${state.resultsOffset + 1} – ${Math.min(state.resultsOffset + d.results.length, d.total)} of ${d.total}`;
+}
+
+function renderResultsTable(rows) {
+  const tbody = document.getElementById('resultsTable');
+  tbody.innerHTML = rows.map(r => `
+    <tr class="clickable" onclick="showResultById(${r.id})">
+      <td>${r.id}</td>
+      <td>${r.tick}</td>
+      <td>${esc(r.exploit_name)}</td>
+      <td>${esc(r.target_name)} <span style="color:var(--muted)">${esc(r.target_host)}</span></td>
+      <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      <td>${r.exit_code ?? '-'}</td>
+      <td>${r.duration_ms != null ? r.duration_ms + 'ms' : '-'}</td>
+      <td style="color:var(--muted)">${r.started_at ? r.started_at.replace('T',' ').slice(0,19) : ''}</td>
+    </tr>
+  `).join('');
+}
+
+async function resultsPrev() {
+  if (state.resultsOffset <= 0) return;
+  state.resultsOffset = Math.max(0, state.resultsOffset - state.resultsLimit);
+  await fetchResults();
+}
+
+async function resultsNext() {
+  if (state.resultsOffset + state.resultsLimit >= state.resultsTotal) return;
+  state.resultsOffset += state.resultsLimit;
+  await fetchResults();
+}
+
+// ── Result Detail Modal ───────────────────────────────────────────────────────
+async function showResultById(id) {
+  const r = await fetch(`/api/results/${id}`);
+  const d = await r.json();
+  showResult(id, d);
+}
+
+function showResult(id, r) {
+  document.getElementById('modalContent').innerHTML = `
+    <div class="form-grid" style="margin-bottom:12px">
+      <div><label>Tick</label><div style="color:var(--blue)">${r.tick}</div></div>
+      <div><label>Exploit</label><div>${esc(r.exploit_name)}</div></div>
+      <div><label>Target</label><div>${esc(r.target_name)} (${esc(r.target_host)})</div></div>
+      <div><label>Status</label><div><span class="badge badge-${r.status}">${r.status}</span></div></div>
+      <div><label>Exit Code</label><div>${r.exit_code ?? '-'}</div></div>
+      <div><label>Duration</label><div>${r.duration_ms != null ? r.duration_ms + 'ms' : '-'}</div></div>
+      <div><label>Started</label><div style="color:var(--muted)">${r.started_at || '-'}</div></div>
+      <div><label>Finished</label><div style="color:var(--muted)">${r.finished_at || '-'}</div></div>
+    </div>
+    <div style="margin-bottom:8px">
+      <label>STDOUT</label>
+      <div class="log-area" style="height:140px;margin-top:4px">${esc(r.stdout) || '<span style="color:var(--muted)">(empty)</span>'}</div>
+    </div>
+    <div>
+      <label>STDERR</label>
+      <div class="log-area" style="height:100px;margin-top:4px;color:#f85149">${esc(r.stderr) || '<span style="color:var(--muted)">(empty)</span>'}</div>
+    </div>
+  `;
+  document.getElementById('resultModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('resultModal').classList.remove('open');
+}
+
+// ── Exploits ──────────────────────────────────────────────────────────────────
+async function loadExploits() {
+  const r = await fetch('/api/exploits');
+  const exploits = await r.json();
+  renderExploitsTable(exploits);
+}
+
+function renderExploitsTable(exploits) {
+  const tbody = document.getElementById('exploitsTable');
+  tbody.innerHTML = exploits.map(e => `
+    <tr>
+      <td>${e.id}</td>
+      <td><strong>${esc(e.name)}</strong></td>
+      <td style="font-family:monospace;color:var(--muted)">${esc(e.filename)}</td>
+      <td>${esc(e.runtime)}</td>
+      <td>${e.timeout}s</td>
+      <td style="color:var(--muted)">${e.target_mode === 'all' ? 'All' : 'Custom'}</td>
+      <td><span style="color:${e.enabled ? 'var(--green)' : 'var(--red)'}">${e.enabled ? 'Yes' : 'No'}</span></td>
+      <td>
+        <button onclick="editExploit(${e.id})" style="font-size:11px;padding:2px 8px">Edit</button>
+        <button onclick="toggleExploit(${e.id}, ${e.enabled})" style="font-size:11px;padding:2px 8px">${e.enabled ? 'Disable' : 'Enable'}</button>
+        <button onclick="deleteExploit(${e.id})" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function createExploit() {
+  const name     = document.getElementById('expName').value.trim();
+  const filename = document.getElementById('expFilename').value.trim();
+  const runtime  = document.getElementById('expRuntime').value.trim();
+  const args     = document.getElementById('expArgs').value.trim();
+  const timeout  = parseInt(document.getElementById('expTimeout').value) || 30;
+  const enabled  = document.getElementById('expEnabled').value === '1';
+  const source   = document.getElementById('expSource').value;
+
+  if (!name || !filename) { alert('Name and filename are required'); return; }
+
+  // 1. Create exploit record
+  const r = await fetch('/api/exploits', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, filename, runtime, args, timeout, enabled, target_mode: 'all' })
+  });
+  if (!r.ok) { alert('Failed to create exploit: ' + await r.text()); return; }
+  const exploit = await r.json();
+
+  // 2. If source tab active, save source
+  const pasteTab = document.getElementById('tab-source-paste');
+  const uploadTab = document.getElementById('tab-source-upload');
+  const fileInput = document.getElementById('expFileUpload');
+
+  if (pasteTab.classList.contains('active') && source.trim()) {
+    await fetch(`/api/exploits/${exploit.id}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ source })
+    });
+  } else if (fileInput.files.length > 0) {
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    await fetch(`/api/exploits/${exploit.id}/upload`, { method: 'POST', body: fd });
+  }
+
+  await loadExploits();
+  // Switch to list tab
+  document.querySelector('[data-tab="exploit-list"]').click();
+  addLog(`✅ Exploit "${name}" created`, 'success');
+}
+
+async function editExploit(id) {
+  const r = await fetch(`/api/exploits/${id}`);
+  const e = await r.json();
+  const srcR = await fetch(`/api/exploits/${id}/source`);
+  const src = await srcR.text();
+
+  document.getElementById('exploitModalTitle').textContent = `Edit Exploit — ${e.name}`;
+  document.getElementById('exploitModalContent').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label>Name</label><input id="em_name" value="${esc(e.name)}"></div>
+      <div class="form-group"><label>Runtime</label><input id="em_runtime" value="${esc(e.runtime)}"></div>
+      <div class="form-group"><label>Timeout</label><input type="number" id="em_timeout" value="${e.timeout}"></div>
+      <div class="form-group"><label>Extra Args</label><input id="em_args" value="${esc(e.args)}"></div>
+      <div class="form-group"><label>Enabled</label>
+        <select id="em_enabled">
+          <option value="1" ${e.enabled?'selected':''}>Yes</option>
+          <option value="0" ${!e.enabled?'selected':''}>No</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Source Code</label>
+      <textarea class="code-editor" id="em_source" style="height:280px">${esc(src)}</textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <label style="color:var(--muted);align-self:center">Or upload new file:</label>
+      <input type="file" id="em_file">
+    </div>
+    <div class="form-actions">
+      <button class="btn-green" onclick="saveExploit(${id})">💾 Save</button>
+      <button onclick="closeExploitModal()">Cancel</button>
+    </div>
+  `;
+  document.getElementById('exploitModal').classList.add('open');
+}
+
+async function saveExploit(id) {
+  const name    = document.getElementById('em_name').value;
+  const runtime = document.getElementById('em_runtime').value;
+  const timeout = parseInt(document.getElementById('em_timeout').value) || 30;
+  const args    = document.getElementById('em_args').value;
+  const enabled = document.getElementById('em_enabled').value === '1';
+  const source  = document.getElementById('em_source').value;
+  const fileEl  = document.getElementById('em_file');
+
+  await fetch(`/api/exploits/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, runtime, timeout, args, enabled, source })
+  });
+
+  if (fileEl.files.length > 0) {
+    const fd = new FormData();
+    fd.append('file', fileEl.files[0]);
+    await fetch(`/api/exploits/${id}/upload`, { method: 'POST', body: fd });
+  }
+
+  closeExploitModal();
+  await loadExploits();
+  addLog(`✅ Exploit ${id} updated`, 'success');
+}
+
+async function toggleExploit(id, currentEnabled) {
+  await fetch(`/api/exploits/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ enabled: !currentEnabled })
+  });
+  await loadExploits();
+}
+
+async function deleteExploit(id) {
+  if (!confirm('Delete this exploit?')) return;
+  await fetch(`/api/exploits/${id}`, { method: 'DELETE' });
+  await loadExploits();
+}
+
+function closeExploitModal() {
+  document.getElementById('exploitModal').classList.remove('open');
+}
+
+// ── Targets ───────────────────────────────────────────────────────────────────
+async function loadTargets() {
+  const r = await fetch('/api/targets');
+  const targets = await r.json();
+  renderTargetsTable(targets);
+}
+
+function renderTargetsTable(targets) {
+  const tbody = document.getElementById('targetsTable');
+  tbody.innerHTML = targets.map(t => `
+    <tr>
+      <td>${t.id}</td>
+      <td><strong>${esc(t.name)}</strong></td>
+      <td style="font-family:monospace">${esc(t.host)}</td>
+      <td>${t.port || '-'}</td>
+      <td>${esc(t.service)}</td>
+      <td><span style="color:${t.enabled ? 'var(--green)' : 'var(--red)'}">${t.enabled ? 'Yes' : 'No'}</span></td>
+      <td>
+        <button onclick="toggleTarget(${t.id}, ${t.enabled})" style="font-size:11px;padding:2px 8px">${t.enabled ? 'Disable' : 'Enable'}</button>
+        <button onclick="deleteTarget(${t.id})" style="font-size:11px;padding:2px 8px;color:var(--red)">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function createTarget() {
+  const name    = document.getElementById('tgtName').value.trim();
+  const host    = document.getElementById('tgtHost').value.trim();
+  const port    = parseInt(document.getElementById('tgtPort').value) || 0;
+  const service = document.getElementById('tgtService').value.trim();
+  const enabled = document.getElementById('tgtEnabled').value === '1';
+
+  if (!name || !host) { alert('Name and host are required'); return; }
+
+  const r = await fetch('/api/targets', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, host, port, service, enabled })
+  });
+  if (!r.ok) { alert('Failed: ' + await r.text()); return; }
+  await loadTargets();
+  document.querySelector('[data-tab="target-list"]').click();
+  addLog(`✅ Target "${name}" (${host}) added`, 'success');
+}
+
+async function toggleTarget(id, currentEnabled) {
+  await fetch(`/api/targets/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ enabled: !currentEnabled })
+  });
+  await loadTargets();
+}
+
+async function deleteTarget(id) {
+  if (!confirm('Delete this target?')) return;
+  await fetch(`/api/targets/${id}`, { method: 'DELETE' });
+  await loadTargets();
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  const r = await fetch('/api/farm/config');
+  const d = await r.json();
+  document.getElementById('cfgTickCount').value     = d.tick_count;
+  document.getElementById('cfgTickInterval').value  = d.tick_interval;
+  document.getElementById('cfgExploitTimeout').value= d.exploit_timeout;
+  document.getElementById('cfgConcurrency').value   = d.concurrency;
+  document.getElementById('cfgContinuous').value    = d.continuous ? '1' : '0';
+}
+
+async function saveConfig() {
+  const body = {
+    tick_count:      parseInt(document.getElementById('cfgTickCount').value),
+    tick_interval:   parseInt(document.getElementById('cfgTickInterval').value),
+    exploit_timeout: parseInt(document.getElementById('cfgExploitTimeout').value),
+    concurrency:     parseInt(document.getElementById('cfgConcurrency').value),
+    continuous:      document.getElementById('cfgContinuous').value === '1',
+  };
+  const r = await fetch('/api/farm/config', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (r.ok) {
+    document.getElementById('cfgMsg').textContent = '✅ Settings saved';
+    setTimeout(() => document.getElementById('cfgMsg').textContent = '', 3000);
+  } else {
+    document.getElementById('cfgMsg').textContent = '❌ Save failed';
+  }
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${name}`)?.classList.add('active');
+  document.querySelector(`[data-page="${name}"]`)?.classList.add('active');
+
+  if (name === 'dashboard') { fetchStatus(); }
+  if (name === 'exploits')  loadExploits();
+  if (name === 'targets')   loadTargets();
+  if (name === 'results')   loadResults();
+  if (name === 'config')    { loadConfig(); loadSubmitConfig(); }
+  if (name === 'flags')     loadFlags();
+}
+
+
+document.querySelectorAll('[data-page]').forEach(el => {
+  el.addEventListener('click', () => showPage(el.dataset.page));
+});
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = tab.dataset.tab;
+    const parent = tab.closest('.card') || tab.closest('.modal');
+    parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${target}`)?.classList.add('active');
+  });
+});
+
+// ── Modal close on overlay click ─────────────────────────────────────────────
+document.getElementById('resultModal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('resultModal')) closeModal();
+});
+document.getElementById('exploitModal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('exploitModal')) closeExploitModal();
+});
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ── Submission config ─────────────────────────────────────────────────────────
+async function loadSubmitConfig() {
+  const r = await fetch('/api/submission/config');
+  const d = await r.json();
+  document.getElementById('subEnabled').checked  = d.submit_enabled;
+  document.getElementById('subMode').value        = d.submit_mode     || 'http_json';
+  document.getElementById('subUrl').value         = d.submit_url      || '';
+  document.getElementById('subToken').value       = d.submit_token    || '';
+  document.getElementById('subHost').value        = d.submit_host     || '';
+  document.getElementById('subPort').value        = d.submit_port     || 31337;
+  document.getElementById('subRegex').value       = d.flag_regex      || '';
+  document.getElementById('subInterval').value    = d.submit_interval || 5;
+  document.getElementById('subLifetime').value    = d.flag_lifetime   || 300;
+  updateSubModeUI();
+}
+
+async function saveSubmitConfig() {
+  const body = {
+    submit_enabled:  document.getElementById('subEnabled').checked,
+    submit_mode:     document.getElementById('subMode').value,
+    submit_url:      document.getElementById('subUrl').value,
+    submit_token:    document.getElementById('subToken').value,
+    submit_host:     document.getElementById('subHost').value,
+    submit_port:     parseInt(document.getElementById('subPort').value) || 31337,
+    flag_regex:      document.getElementById('subRegex').value,
+    submit_interval: parseInt(document.getElementById('subInterval').value) || 5,
+    flag_lifetime:   parseInt(document.getElementById('subLifetime').value) || 300,
+  };
+  const r = await fetch('/api/submission/config', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const msg = document.getElementById('subMsg');
+  if (r.ok) {
+    msg.style.color = 'var(--green)';
+    msg.textContent = '✅ Submission settings saved';
+    addLog('✅ Submission settings saved', 'success');
+  } else {
+    msg.style.color = 'var(--red)';
+    msg.textContent = '❌ Save failed';
+  }
+  setTimeout(() => msg.textContent = '', 4000);
+}
+
+async function toggleSubmitEnabled(checked) {
+  // Quick toggle without full save — reuse saveSubmitConfig
+  await saveSubmitConfig();
+  addLog(`🚩 Auto-submission ${checked ? 'ENABLED' : 'DISABLED'}`, checked ? 'success' : 'info');
+}
+
+function updateSubModeUI() {
+  const mode = document.getElementById('subMode').value;
+  const isTCP = mode === 'tcp';
+  document.getElementById('subUrlGroup').style.display   = isTCP ? 'none'  : '';
+  document.getElementById('subTokenGroup').style.display = isTCP ? 'none'  : '';
+  document.getElementById('subHostGroup').style.display  = isTCP ? ''      : 'none';
+  document.getElementById('subPortGroup').style.display  = isTCP ? ''      : 'none';
+}
+
+async function submitNow() {
+  const r = await fetch('/api/submission/submit_now', { method: 'POST' });
+  if (r.ok) {
+    addLog('⚡ Manual submission triggered', 'info');
+  } else {
+    addLog('❌ Submit now failed', 'failed');
+  }
+}
+
+// ── Flags page ────────────────────────────────────────────────────────────────
+const flagsState = { offset: 0, limit: 100, total: 0 };
+
+async function loadFlags() {
+  flagsState.offset = 0;
+  await fetchFlagStats();
+  await fetchFlags();
+}
+
+async function fetchFlagStats() {
+  try {
+    const r = await fetch('/api/submission/flags/stats');
+    const d = await r.json();
+    document.getElementById('fstatTotal').textContent     = d.total      ?? 0;
+    document.getElementById('fstatQueued').textContent    = d.queued     ?? 0;
+    document.getElementById('fstatAccepted').textContent  = d.accepted   ?? 0;
+    document.getElementById('fstatRejected').textContent  = d.rejected   ?? 0;
+    document.getElementById('fstatDuplicate').textContent = d.duplicate  ?? 0;
+    document.getElementById('fstatExpired').textContent   = d.expired    ?? 0;
+    document.getElementById('fstatError').textContent     = d.error      ?? 0;
+
+    // Update sidebar badge
+    const queued = d.queued ?? 0;
+    const badge = document.getElementById('navFlagBadge');
+    if (queued > 0) {
+      badge.textContent = queued;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch {}
+}
+
+async function fetchFlags() {
+  const status = document.getElementById('flagFilterStatus')?.value || '';
+  let url = `/api/submission/flags?limit=${flagsState.limit}&offset=${flagsState.offset}`;
+  if (status) url += `&status=${status}`;
+
+  const r = await fetch(url);
+  const d = await r.json();
+  flagsState.total = d.total;
+
+  const badge = {
+    QUEUED:    'badge-RUNNING',
+    ACCEPTED:  'badge-SUCCESS',
+    REJECTED:  'badge-FAILED',
+    DUPLICATE: 'badge-SKIPPED',
+    EXPIRED:   'badge-CANCELLED',
+    ERROR:     'badge-CRASHED',
+  };
+
+  const tbody = document.getElementById('flagsTable');
+  tbody.innerHTML = d.flags.map(f => `
+    <tr>
+      <td style="font-family:monospace;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="${esc(f.flag)}">${esc(f.flag)}</td>
+      <td>${esc(f.exploit_name)}</td>
+      <td style="font-family:monospace;font-size:12px">${esc(f.target_host)}</td>
+      <td>${f.tick}</td>
+      <td><span class="badge ${badge[f.status] || 'badge-SKIPPED'}">${f.status}</span></td>
+      <td style="color:var(--muted);font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${esc(f.response)}">${esc(f.response)}</td>
+      <td style="color:var(--muted);font-size:11px">${f.created_at ? f.created_at.replace('T',' ').slice(0,19) : ''}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('flagsPagination').textContent =
+    `${flagsState.offset + 1}–${Math.min(flagsState.offset + d.flags.length, d.total)} of ${d.total}`;
+}
+
+async function flagsPrev() {
+  if (flagsState.offset <= 0) return;
+  flagsState.offset = Math.max(0, flagsState.offset - flagsState.limit);
+  await fetchFlags();
+}
+async function flagsNext() {
+  if (flagsState.offset + flagsState.limit >= flagsState.total) return;
+  flagsState.offset += flagsState.limit;
+  await fetchFlags();
+}
+
+// Periodic flag badge refresh
+setInterval(fetchFlagStats, 15000);
+
+
+
+connectWS();
+fetchStatus();
+loadConfig();
+
+// Periodic status refresh as fallback
+setInterval(fetchStatus, 10000);
+</script>
+</body>
+</html>

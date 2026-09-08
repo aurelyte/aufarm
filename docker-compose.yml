@@ -1,0 +1,36 @@
+services:
+  aufarm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # host networking gives exploits direct access to competition network
+    # without NAT, which is essential for A&D competitions where targets
+    # are on the same physical network as the farm machine.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DB_PATH: /data/aufarm.db
+      EXPLOITS_DIR: /exploits
+      FRONTEND_DIR: /frontend
+    volumes:
+      # Persistent SQLite database
+      - aufarm_data:/data
+      # Exploit scripts — mounted from local ./exploits/ so you can
+      # edit them from your host without rebuilding the image.
+      - ./exploits:/exploits
+      # Application logs
+      - aufarm_logs:/logs
+      # Hot-reload frontend: edit frontend/index.html and refresh browser
+      - ./frontend:/frontend:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  aufarm_data:
+    driver: local
+  aufarm_logs:
+    driver: local
