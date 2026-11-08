@@ -160,7 +160,7 @@ class FarmScheduler:
             "tick_interval":   int(cfg.get("tick_interval", 60)),
             "exploit_timeout": int(cfg.get("exploit_timeout", 30)),
             "concurrency":     int(cfg.get("concurrency", 20)),
-            "continuous":      cfg.get("continuous", "0") == "1",
+            "continuous":      cfg.get("continuous", "1") == "1",
             "running_jobs":    self._running_jobs,
             "stats":           stats,
         }
@@ -318,7 +318,9 @@ class FarmScheduler:
         tick_count    = int(cfg.get("tick_count", 100))
         tick_interval = int(cfg.get("tick_interval", 60))
         timeout       = int(cfg.get("exploit_timeout", 30))
-        continuous    = cfg.get("continuous", "0") == "1"
+        # A zero tick count has always been labeled "continuous" in the UI.
+        # Honor that configuration as well as the explicit continuous toggle.
+        continuous    = cfg.get("continuous", "1") == "1" or tick_count == 0
 
         loop_start = time.monotonic()
         tick = 0

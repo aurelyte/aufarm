@@ -710,14 +710,14 @@
               <input type="number" id="compTickInterval" value="60" min="1">
             </div>
             <div class="form-group">
-              <label>Tick Count (0 = Continuous)</label>
-              <input type="number" id="compTickCount" value="100" min="0">
+              <label>Tick Count (only when Continuous Mode is No)</label>
+              <input type="number" id="compTickCount" value="0" min="0">
             </div>
             <div class="form-group">
               <label>Continuous Mode</label>
               <select id="compContinuous">
-                <option value="0">No (Stop after tick count)</option>
                 <option value="1">Yes (Run indefinitely until stopped)</option>
+                <option value="0">No (Stop after tick count)</option>
               </select>
             </div>
             <div class="form-group">
@@ -896,8 +896,8 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
         <div class="card-title">Farm Settings</div>
         <div class="form-grid">
           <div class="form-group">
-            <label>Tick Count (0 = continuous)</label>
-            <input type="number" id="cfgTickCount" value="100">
+            <label>Tick Count (only when Continuous Mode is No)</label>
+            <input type="number" id="cfgTickCount" value="0">
           </div>
           <div class="form-group">
             <label>Tick Interval (seconds)</label>
@@ -914,8 +914,8 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
           <div class="form-group">
             <label>Continuous Mode</label>
             <select id="cfgContinuous">
-              <option value="0">No (use tick count)</option>
               <option value="1">Yes (run forever)</option>
+              <option value="0">No (use tick count)</option>
             </select>
           </div>
         </div>
@@ -1082,6 +1082,7 @@ const state = {
   farmStatus: 'STOPPED',
   currentTick: 0,
   tickCount: 100,
+  continuous: true,
   runningJobs: 0,
   stats: {},
   recentResults: [],
@@ -1159,7 +1160,8 @@ function handleWSMessage(msg) {
   }
 
   if (msg.type === 'tick_start') {
-    addLog(`━━━ Tick ${msg.data.tick} / ${msg.data.tick_count} ━━━`, 'tick');
+    const limit = state.continuous ? '∞' : msg.data.tick_count;
+    addLog(`━━━ Tick ${msg.data.tick} / ${limit} ━━━`, 'tick');
   }
 
   if (msg.type === 'job_start') {
@@ -1381,6 +1383,7 @@ function updateStatusUI(d) {
   state.farmStatus  = d.status || state.farmStatus;
   state.currentTick = d.current_tick ?? state.currentTick;
   state.tickCount   = d.tick_count   ?? state.tickCount;
+  state.continuous  = d.continuous  ?? state.continuous;
   state.runningJobs = d.running_jobs ?? state.runningJobs;
   state.stats       = d.stats        || state.stats;
 
@@ -1389,7 +1392,7 @@ function updateStatusUI(d) {
   badge.className = `status-badge status-${state.farmStatus}`;
 
   document.getElementById('sbTick').textContent    = state.currentTick;
-  document.getElementById('sbTotal').textContent   = state.farmStatus === 'RUNNING' || state.tickCount ? state.tickCount : '-';
+  document.getElementById('sbTotal').textContent   = state.continuous ? '∞' : (state.tickCount || '-');
   document.getElementById('sbRunning').textContent = state.runningJobs;
   document.getElementById('sbSuccess').textContent = state.stats.success  ?? 0;
   document.getElementById('sbFailed').textContent  = state.stats.failed   ?? 0;

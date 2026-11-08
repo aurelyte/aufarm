@@ -80,7 +80,7 @@ async def get_config():
             "tick_interval":   int(cfg.get("tick_interval", 60)),
             "exploit_timeout": int(cfg.get("exploit_timeout", 30)),
             "concurrency":     int(cfg.get("concurrency", 20)),
-            "continuous":      cfg.get("continuous", "0") == "1",
+            "continuous":      cfg.get("continuous", "1") == "1",
         }
     finally:
         await db.close()

@@ -51,7 +51,7 @@ async def get_competition_config():
                 exploit_timeout=int(cfg.get("exploit_timeout", 30)),
                 collection_deadline=int(cfg.get("collection_deadline", cfg.get("exploit_timeout", 30))),
                 concurrency=int(cfg.get("concurrency", 20)),
-                continuous=cfg.get("continuous", "0") == "1",
+                continuous=cfg.get("continuous", "1") == "1",
                 submit_enabled=cfg.get("submit_enabled", "0") == "1",
                 submit_interval=int(cfg.get("submit_interval", 5)),
                 flag_lifetime=int(cfg.get("flag_lifetime", 300)),

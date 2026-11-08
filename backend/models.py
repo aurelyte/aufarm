@@ -80,7 +80,7 @@ class FarmConfig(BaseModel):
     exploit_timeout: int = 30
     collection_deadline: int = 30
     concurrency: int = 20
-    continuous: bool = False
+    continuous: bool = True
 
 
 class FarmStatus(BaseModel):
@@ -142,7 +142,7 @@ class ExecutionConfig(BaseModel):
     exploit_timeout: int = 30
     collection_deadline: int = 30
     concurrency: int = 20
-    continuous: bool = False
+    continuous: bool = True
     submit_enabled: bool = False
     submit_interval: int = 5
     flag_lifetime: int = 300

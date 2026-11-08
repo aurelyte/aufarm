@@ -101,7 +101,7 @@ INSERT OR IGNORE INTO farm_config (key, value) VALUES
     ('concurrency',       '20'),
     ('current_tick',      '0'),
     ('farm_status',       'STOPPED'),
-    ('continuous',        '0'),
+    ('continuous',        '1'),
     ('submit_enabled',    '0'),
     ('submit_mode',       'http_json'),
     ('submit_url',        ''),
