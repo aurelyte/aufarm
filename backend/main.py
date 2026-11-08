@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse
 from database import init_db
 from scheduler import broadcaster
 from submitter import submitter
-from routers import farm, targets, exploits, results
+from routers import farm, targets, exploits, results, competition
 from routers.submission import router as submission_router
 
 logging.basicConfig(
@@ -65,6 +65,7 @@ app.include_router(targets.router)
 app.include_router(exploits.router)
 app.include_router(results.router)
 app.include_router(submission_router)
+app.include_router(competition.router)
 
 
 # ── Status alias ──────────────────────────────────────────────────────────────

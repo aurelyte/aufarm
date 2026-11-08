@@ -12,6 +12,8 @@ from database import get_db
 
 router = APIRouter(prefix="/api/submission", tags=["submission"])
 
+SECRET_MASK = "••••••••"
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +51,7 @@ async def get_submit_config():
             "submit_enabled":  cfg.get("submit_enabled", "0") == "1",
             "submit_mode":     cfg.get("submit_mode", "http_json"),
             "submit_url":      cfg.get("submit_url", ""),
-            "submit_token":    cfg.get("submit_token", ""),
+            "submit_token":    SECRET_MASK if cfg.get("submit_token", "") else "",
             "submit_host":     cfg.get("submit_host", ""),
             "submit_port":     int(cfg.get("submit_port", 31337)),
             "flag_regex":      cfg.get("flag_regex", ""),
@@ -64,11 +66,17 @@ async def get_submit_config():
 async def set_submit_config(body: SubmitConfig):
     db = await get_db()
     try:
+        submit_token = body.submit_token
+        if submit_token == SECRET_MASK:
+            async with db.execute("SELECT value FROM farm_config WHERE key = 'submit_token'") as cur:
+                row = await cur.fetchone()
+            submit_token = row["value"] if row else ""
+
         updates = {
             "submit_enabled":  "1" if body.submit_enabled else "0",
             "submit_mode":     body.submit_mode,
             "submit_url":      body.submit_url,
-            "submit_token":    body.submit_token,
+            "submit_token":    submit_token,
             "submit_host":     body.submit_host,
             "submit_port":     str(body.submit_port),
             "flag_regex":      body.flag_regex,
@@ -153,7 +161,7 @@ async def submit_now():
     try:
         import asyncio
         from submitter import submitter as sub_instance
-        asyncio.create_task(sub_instance._run_once(), name="submit-now")
+        asyncio.create_task(sub_instance._run_once(include_errors=True), name="submit-now")
         return {"ok": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

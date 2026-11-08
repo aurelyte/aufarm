@@ -93,6 +93,16 @@ async def results_stats():
         await db.close()
 
 
+@router.get("/latest-batch")
+async def get_latest_batch():
+    """Return the most recent service/vulnerability batch run and per-IP results."""
+    from scheduler import scheduler
+    batch = await scheduler.get_latest_batch()
+    if not batch:
+        return {"active": False, "message": "No batch runs recorded yet"}
+    return {"active": True, "batch": batch}
+
+
 @router.get("/{result_id}")
 async def get_result(result_id: int):
     db = await get_db()

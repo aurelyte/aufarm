@@ -281,6 +281,50 @@
     0%, 100% { opacity: 1; } 50% { opacity: 0.5; }
   }
 
+  /* ── Stage Stepper ───────────────────────────────────────────── */
+  .stage-stepper {
+    display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .stage-step {
+    flex: 1; min-width: 170px;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex; align-items: center; gap: 10px;
+    transition: all 0.2s ease;
+  }
+  .stage-step.active {
+    border-color: var(--blue);
+    background: #112235;
+    box-shadow: 0 0 10px rgba(88,166,255,0.25);
+  }
+  .stage-step.completed {
+    border-color: var(--green);
+    background: #0f2717;
+  }
+  .stage-number {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px;
+    background: var(--border); color: var(--muted);
+  }
+  .stage-step.active .stage-number { background: var(--blue); color: #fff; }
+  .stage-step.completed .stage-number { background: var(--green); color: #fff; }
+  .stage-info { flex: 1; }
+  .stage-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text); }
+  .stage-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  /* ── Status badges for Collection & Submission ───────────────── */
+  .badge-retrieved    { background: #163a20; color: #3fb950; }
+  .badge-not-retrieved{ background: #21262d; color: #8b949e; }
+  .badge-accepted     { background: #163a20; color: #3fb950; font-weight: 700; }
+  .badge-invalid      { background: #3d1010; color: #f85149; }
+  .badge-already      { background: #3d2d06; color: #d29922; }
+  .badge-error        { background: #4a1515; color: #ff7b72; }
+  .badge-submitting   { background: #1a3149; color: #58a6ff; }
+  .badge-not-submitted{ background: #21262d; color: #8b949e; }
+
   /* ── Pages ───────────────────────────────────────────────────── */
   .page { display: none; }
   .page.active { display: block; }
@@ -317,6 +361,7 @@
     <a class="nav-item" data-page="results">📋 Results</a>
     <a class="nav-item" data-page="flags">🚩 Flags <span id="navFlagBadge" style="font-size:10px;background:#196c2e;color:#3fb950;padding:1px 5px;border-radius:8px;display:none"></span></a>
     <span class="nav-section">Config</span>
+    <a class="nav-item" data-page="competition">🏆 Competition Config</a>
     <a class="nav-item" data-page="exploits">🔧 Exploits</a>
     <a class="nav-item" data-page="targets">🎯 Targets</a>
     <a class="nav-item" data-page="config">⚙ Settings</a>
@@ -393,6 +438,96 @@
         </div>
       </div>
 
+      <!-- ── Batch Execution Monitor (Collect First, Submit Later) ── -->
+      <div class="card" id="batchMonitorCard">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>🎯 Service Batch Execution & Submission</span>
+          <span id="batchServiceBadge" class="status-badge" style="background:#1a3149;color:#58a6ff;font-size:11px">Idle</span>
+        </div>
+
+        <!-- Visual 3-Stage Stepper -->
+        <div class="stage-stepper">
+          <div class="stage-step" id="stageStep1">
+            <div class="stage-number" id="stageNum1">1</div>
+            <div class="stage-info">
+              <div class="stage-title">Exploitation / Collection</div>
+              <div class="stage-desc" id="stageDesc1">Running exploits against opponent IPs</div>
+            </div>
+          </div>
+          <div class="stage-step" id="stageStep2">
+            <div class="stage-number" id="stageNum2">2</div>
+            <div class="stage-info">
+              <div class="stage-title">Batch Submission</div>
+              <div class="stage-desc" id="stageDesc2">Submitting all collected flags together</div>
+            </div>
+          </div>
+          <div class="stage-step" id="stageStep3">
+            <div class="stage-number" id="stageNum3">3</div>
+            <div class="stage-info">
+              <div class="stage-title">Completed Results</div>
+              <div class="stage-desc" id="stageDesc3">Round summary & per-IP statuses</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch Summary Metrics Grid -->
+        <div class="stats-grid" style="margin-bottom:12px">
+          <div class="stat-item">
+            <div class="val val-blue" id="batchServiceDisplay" style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">-</div>
+            <div class="label">Current Service</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-blue" id="batchOpponentsCount">0</div>
+            <div class="label">Opponents</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-yellow" id="batchFlagsRetrieved">0</div>
+            <div class="label">Flags Retrieved</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-green" id="batchFlagsAccepted">0</div>
+            <div class="label">Accepted</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-red" id="batchFlagsInvalid">0</div>
+            <div class="label">Invalid</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-purple" id="batchFlagsAlready">0</div>
+            <div class="label">Already Submitted</div>
+          </div>
+          <div class="stat-item">
+            <div class="val val-orange" id="batchDuration">0ms</div>
+            <div class="label">Batch Duration</div>
+          </div>
+        </div>
+
+        <!-- Per-IP Results Table -->
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Opponent IP</th>
+                <th>Target Name</th>
+                <th>Exploit Status</th>
+                <th>Collection Status</th>
+                <th>Submission Status</th>
+                <th>Flag Preview</th>
+                <th>Duration</th>
+                <th>Notes / Error</th>
+              </tr>
+            </thead>
+            <tbody id="batchResultsTable">
+              <tr>
+                <td colspan="8" style="text-align:center;color:var(--muted);padding:16px">
+                  No active batch running. Start farm or run ⚡ ONE TICK to begin batch collection.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Live log -->
       <div class="card">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -447,7 +582,7 @@
             <thead>
               <tr>
                 <th>ID</th><th>Tick</th><th>Exploit</th><th>Target</th>
-                <th>Status</th><th>Exit</th><th>Duration</th><th>Started</th>
+                <th>Collection</th><th>Submission</th><th>Status</th><th>Exit</th><th>Duration</th><th>Started</th>
               </tr>
             </thead>
             <tbody id="resultsTable"></tbody>
@@ -457,6 +592,151 @@
           <button onclick="resultsPrev()">← Prev</button>
           <span id="resultsPagination" style="color:var(--muted);font-size:12px"></span>
           <button onclick="resultsNext()">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Centralized Competition Config Page ── -->
+    <div class="page" id="page-competition">
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>🏆 Centralized Competition Configuration</span>
+          <span style="font-size:12px;color:var(--muted);font-weight:normal;text-transform:none">Single unified place for Team identity, Scoreboard API & Execution</span>
+        </div>
+
+        <!-- Tab bar inside Competition Config -->
+        <div class="tab-bar">
+          <div class="tab active" data-tab="comp-team">👥 Team Identity</div>
+          <div class="tab" data-tab="comp-api">📡 Scoreboard API</div>
+          <div class="tab" data-tab="comp-exec">⏱ Execution & Batch</div>
+        </div>
+
+        <!-- Tab 1: Team Configuration -->
+        <div class="tab-content active" id="tab-comp-team">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+            Configure your team identifier, credentials, and host IP address. Target hosts matching your team IP will be automatically protected and excluded from attacks.
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Team ID / Number *</label>
+              <input id="compTeamId" placeholder="1" required>
+            </div>
+            <div class="form-group">
+              <label>Team Name *</label>
+              <input id="compTeamName" placeholder="MyTeam" required>
+            </div>
+            <div class="form-group">
+              <label>Team IP Address (Own Team) <span style="color:var(--muted);font-size:11px">— Excluded from attacks</span></label>
+              <input id="compTeamIp" placeholder="10.60.1.1 (comma-separated for multiple)">
+            </div>
+            <div class="form-group">
+              <label>Team Password / Secret</label>
+              <div style="display:flex;gap:4px">
+                <input type="password" id="compTeamPassword" placeholder="••••••••" style="flex:1">
+                <button type="button" onclick="togglePassVisibility('compTeamPassword')" style="padding:4px 8px;font-size:12px">👁</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Scoreboard API Configuration -->
+        <div class="tab-content" id="tab-comp-api">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+            Configure scoreboard submission endpoint, authentication token, and flag regex format. Sensitive credentials are masked in the UI and never logged.
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Submission Protocol / Mode</label>
+              <select id="compSubmitMode" onchange="updateCompModeUI()">
+                <option value="http_json">HTTP JSON — POST {"flags": [...]}</option>
+                <option value="http_form">HTTP Form — POST flag=value</option>
+                <option value="tcp">Raw TCP — Line-by-line socket</option>
+              </select>
+            </div>
+            <div class="form-group" id="compUrlGroup">
+              <label>Scoreboard Submit URL</label>
+              <input id="compSubmitUrl" placeholder="http://10.10.0.1/api/v1/flags">
+            </div>
+            <div class="form-group" id="compTokenGroup">
+              <label>API Key / Team Token</label>
+              <div style="display:flex;gap:4px">
+                <input type="password" id="compSubmitToken" placeholder="••••••••" style="flex:1">
+                <button type="button" onclick="togglePassVisibility('compSubmitToken')" style="padding:4px 8px;font-size:12px">👁</button>
+              </div>
+            </div>
+            <div class="form-group" id="compHostGroup" style="display:none">
+              <label>TCP Submit Host</label>
+              <input id="compSubmitHost" placeholder="10.10.0.1">
+            </div>
+            <div class="form-group" id="compPortGroup" style="display:none">
+              <label>TCP Submit Port</label>
+              <input type="number" id="compSubmitPort" value="31337">
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1">
+              <label>Flag Extraction Regex <span style="color:var(--muted);font-size:11px">(matches flags in exploit stdout)</span></label>
+              <input id="compFlagRegex" placeholder="[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,\}" style="font-family:monospace">
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Execution Configuration -->
+        <div class="tab-content" id="tab-comp-exec">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+            Tune execution concurrency, per-service batch behavior, and tick scheduling parameters.
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Auto-Submit Collected Flags</label>
+              <select id="compSubmitEnabled">
+                <option value="1">Enabled (Submit batch immediately after collection)</option>
+                <option value="0">Disabled (Hold in queue for manual submission)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Execution Concurrency (Max parallel jobs)</label>
+              <input type="number" id="compConcurrency" value="20" min="1" max="100">
+            </div>
+            <div class="form-group">
+              <label>Exploit Timeout (seconds)</label>
+              <input type="number" id="compExploitTimeout" value="30" min="1">
+            </div>
+            <div class="form-group">
+              <label>Collection Deadline (seconds)</label>
+              <input type="number" id="compCollectionDeadline" value="30" min="0">
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Max wall-clock collection window per service before batch submit. 0 disables.</div>
+            </div>
+            <div class="form-group">
+              <label>Tick Interval (seconds)</label>
+              <input type="number" id="compTickInterval" value="60" min="1">
+            </div>
+            <div class="form-group">
+              <label>Tick Count (0 = Continuous)</label>
+              <input type="number" id="compTickCount" value="100" min="0">
+            </div>
+            <div class="form-group">
+              <label>Continuous Mode</label>
+              <select id="compContinuous">
+                <option value="0">No (Stop after tick count)</option>
+                <option value="1">Yes (Run indefinitely until stopped)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Flag Lifetime (seconds before expiry)</label>
+              <input type="number" id="compFlagLifetime" value="300" min="30">
+            </div>
+            <div class="form-group">
+              <label>Submit Retry Interval (seconds)</label>
+              <input type="number" id="compSubmitInterval" value="5" min="2">
+            </div>
+          </div>
+        </div>
+
+        <!-- Common actions for centralized config -->
+        <div class="form-actions" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+          <button class="btn-green" onclick="saveCompetitionConfig()">💾 Save Configuration</button>
+          <button onclick="testCompetitionConnection()">🔌 Test Scoreboard Connection</button>
+          <button onclick="loadCompetitionConfig()">↩ Reload Settings</button>
+          <div id="compMsg" style="margin-left:auto;font-size:12px"></div>
         </div>
       </div>
     </div>
@@ -500,8 +780,8 @@
               <input id="expRuntime" value="python3">
             </div>
             <div class="form-group">
-              <label>Extra Args</label>
-              <input id="expArgs" placeholder="">
+              <label>Extra Args (after host and port)</label>
+              <input id="expArgs" placeholder='--mode safe --label "blue team"'>
             </div>
             <div class="form-group">
               <label>Timeout (s)</label>
@@ -527,23 +807,27 @@
               </label>
               <textarea class="code-editor" id="expSource" placeholder="#!/usr/bin/env python3
 # AuFarm exploit template
-# Args: target_host [port]
+# Args: target_host target_port [configured extra args]
 import sys, socket
+import json
 
 host = sys.argv[1]
 port = int(sys.argv[2]) if len(sys.argv) > 2 else 80
 
-# TODO: implement exploit
-print(f'Attacking {host}:{port}')
+# TODO: implement authorized collection; diagnostics go to stderr.
+print(f'Checking {host}:{port}', file=sys.stderr)
+print('AUFARM_RESULT ' + json.dumps({'flags': []}))
 "></textarea>
             </div>
             <div class="tab-content" id="tab-source-upload">
-              <input type="file" id="expFileUpload" style="margin-top:4px">
+              <input type="file" id="expFileUpload" style="margin-top:4px" onchange="updateExploitUploadLabel()">
+              <div id="expUploadLabel" style="font-size:12px;color:var(--muted);margin-top:6px">No file selected</div>
             </div>
           </div>
 
-          <div class="form-actions">
-            <button class="btn-green" onclick="createExploit()">💾 Save Exploit</button>
+          <div class="form-actions" style="align-items:center;gap:10px">
+            <button class="btn-green" onclick="createExploit()" id="btnCreateExploit">💾 Save Exploit</button>
+            <span id="expMsg" style="font-size:12px;color:var(--muted)"></span>
           </div>
         </div>
       </div>
@@ -805,6 +1089,7 @@ const state = {
   resultsLimit: 50,
   resultsTotal: 0,
   ws: null,
+  currentBatch: null,
 };
 
 // ── WebSocket ────────────────────────────────────────────────────────────────
@@ -844,6 +1129,22 @@ function handleWSMessage(msg) {
     if (msg.data) updateStatusUI(msg.data);
   }
 
+  if (msg.type === 'service_batch_start') {
+    handleServiceBatchStart(msg.data);
+  }
+
+  if (msg.type === 'service_target_done') {
+    handleServiceTargetDone(msg.data);
+  }
+
+  if (msg.type === 'service_batch_collect_done') {
+    handleServiceBatchCollectDone(msg.data);
+  }
+
+  if (msg.type === 'service_batch_complete') {
+    handleServiceBatchComplete(msg.data);
+  }
+
   if (msg.type === 'job_done') {
     const r = msg.data;
     addLog(
@@ -854,7 +1155,6 @@ function handleWSMessage(msg) {
       r.status.includes('FAIL') || r.status === 'CRASHED' ? 'failed' : 'info'
     );
     prependRecentResult(r);
-    // Refresh stats
     fetchStatus();
   }
 
@@ -886,6 +1186,193 @@ function handleWSMessage(msg) {
       fetchFlagStats();
     }
   }
+}
+
+// ── Batch Monitor Functions ───────────────────────────────────────────────────
+function badgeCollectionClass(st) {
+  if (!st) return 'badge-not-retrieved';
+  if (st.includes('Retrieved') && !st.includes('Not')) return 'badge-retrieved';
+  if (st.includes('Running')) return 'badge-submitting';
+  return 'badge-not-retrieved';
+}
+
+function badgeSubmissionClass(st) {
+  if (!st) return 'badge-not-submitted';
+  if (st === 'Accepted') return 'badge-accepted';
+  if (st === 'Invalid') return 'badge-invalid';
+  if (st === 'Already submitted') return 'badge-already';
+  if (st === 'Submission Error') return 'badge-error';
+  if (st.includes('Submitting')) return 'badge-submitting';
+  return 'badge-not-submitted';
+}
+
+function handleServiceBatchStart(d) {
+  state.currentBatch = {
+    tick: d.tick,
+    exploit_id: d.exploit_id,
+    exploit_name: d.exploit_name,
+    stage: 'COLLECTING',
+    targets_count: d.targets_count,
+    flags_retrieved: 0,
+    flags_submitted: 0,
+    accepted: 0,
+    rejected: 0,
+    duplicate: 0,
+    errors: 0,
+    duration_ms: 0,
+    results: []
+  };
+  updateBatchStageUI('COLLECTING', d);
+  renderBatchResultsTable(state.currentBatch);
+  addLog(`🎯 Starting batch collection: ${d.exploit_name} against ${d.targets_count} opponents`, 'tick');
+}
+
+function handleServiceTargetDone(d) {
+  if (!state.currentBatch) {
+    state.currentBatch = {
+      tick: d.tick,
+      exploit_id: d.exploit_id,
+      exploit_name: d.exploit_name,
+      stage: 'COLLECTING',
+      targets_count: 0,
+      flags_retrieved: 0,
+      flags_submitted: 0,
+      accepted: 0,
+      rejected: 0,
+      duplicate: 0,
+      errors: 0,
+      duration_ms: 0,
+      results: []
+    };
+  }
+
+  let row = state.currentBatch.results.find(r => r.target_id === d.target_id || r.target_host === d.target_host);
+  if (!row) {
+    row = {
+      target_id: d.target_id,
+      target_host: d.target_host,
+      target_name: d.target_name,
+      status: d.status,
+      collection_status: d.collection_status,
+      submission_status: d.submission_status,
+      flag: d.flag,
+      duration_ms: d.duration_ms,
+      error: d.status !== 'SUCCESS' ? d.status : ''
+    };
+    state.currentBatch.results.push(row);
+  } else {
+    row.status = d.status;
+    row.collection_status = d.collection_status;
+    row.submission_status = d.submission_status;
+    row.flag = d.flag;
+    row.duration_ms = d.duration_ms;
+  }
+
+  state.currentBatch.flags_retrieved = state.currentBatch.results.filter(r => r.collection_status === 'Flag Retrieved').length;
+  renderBatchResultsTable(state.currentBatch);
+}
+
+function handleServiceBatchCollectDone(d) {
+  if (state.currentBatch) {
+    state.currentBatch.stage = 'SUBMITTING';
+    state.currentBatch.flags_retrieved = d.flags_retrieved;
+  }
+  updateBatchStageUI('SUBMITTING', d);
+  addLog(`📦 Collection complete for ${d.exploit_name}: ${d.flags_retrieved} flag(s) retrieved. Entering batch submission...`, 'info');
+}
+
+function handleServiceBatchComplete(d) {
+  state.currentBatch = d;
+  updateBatchStageUI('COMPLETED', d);
+  renderBatchResultsTable(d);
+  addLog(`🏁 Service ${d.exploit_name} complete in ${d.duration_ms}ms: ${d.accepted} accepted, ${d.rejected} rejected, ${d.duplicate} dup, ${d.errors} err`, d.accepted > 0 ? 'success' : 'info');
+}
+
+function updateBatchStageUI(stage, data) {
+  const step1 = document.getElementById('stageStep1');
+  const step2 = document.getElementById('stageStep2');
+  const step3 = document.getElementById('stageStep3');
+  const badge = document.getElementById('batchServiceBadge');
+
+  if (!step1) return;
+
+  step1.classList.remove('active', 'completed');
+  step2.classList.remove('active', 'completed');
+  step3.classList.remove('active', 'completed');
+
+  if (stage === 'COLLECTING') {
+    step1.classList.add('active');
+    badge.textContent = `Stage 1: Collecting (${data.exploit_name || '-'})`;
+    badge.style.background = '#1a3149';
+    badge.style.color = '#58a6ff';
+    document.getElementById('stageDesc1').textContent = `Attacking opponents (${data.targets_count || 0} targets)`;
+    document.getElementById('stageDesc2').textContent = 'Waiting for collection to finish';
+  } else if (stage === 'SUBMITTING') {
+    step1.classList.add('completed');
+    step2.classList.add('active');
+    badge.textContent = `Stage 2: Submitting (${data.flags_retrieved || 0} flags)`;
+    badge.style.background = '#3d2d06';
+    badge.style.color = '#d29922';
+    document.getElementById('stageDesc1').textContent = 'Collection completed';
+    document.getElementById('stageDesc2').textContent = `Submitting ${data.flags_retrieved || 0} flags in batch`;
+  } else if (stage === 'COMPLETED') {
+    step1.classList.add('completed');
+    step2.classList.add('completed');
+    step3.classList.add('completed');
+    badge.textContent = `Completed (${data.exploit_name || '-'})`;
+    badge.style.background = '#163a20';
+    badge.style.color = '#3fb950';
+    document.getElementById('stageDesc1').textContent = 'All opponents processed';
+    document.getElementById('stageDesc2').textContent = `${data.flags_submitted || 0} flags submitted`;
+    document.getElementById('stageDesc3').textContent = `Finished in ${data.duration_ms || 0}ms (${data.accepted || 0} accepted)`;
+  }
+}
+
+function renderBatchResultsTable(batch) {
+  if (!batch) return;
+
+  document.getElementById('batchServiceDisplay').textContent = batch.exploit_name || '-';
+  document.getElementById('batchOpponentsCount').textContent = batch.targets_count || (batch.results ? batch.results.length : 0);
+  document.getElementById('batchFlagsRetrieved').textContent = batch.flags_retrieved || 0;
+  document.getElementById('batchFlagsAccepted').textContent = batch.accepted || 0;
+  document.getElementById('batchFlagsInvalid').textContent = batch.rejected || 0;
+  document.getElementById('batchFlagsAlready').textContent = batch.duplicate || 0;
+  document.getElementById('batchDuration').textContent = (batch.duration_ms || 0) + 'ms';
+
+  const tbody = document.getElementById('batchResultsTable');
+  if (!batch.results || batch.results.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px">Processing targets for ${esc(batch.exploit_name)}...</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = batch.results.map(r => {
+    const colClass = badgeCollectionClass(r.collection_status);
+    const subClass = badgeSubmissionClass(r.submission_status);
+    return `
+      <tr>
+        <td style="font-family:monospace;font-weight:600">${esc(r.target_host)}</td>
+        <td>${esc(r.target_name)}</td>
+        <td><span class="badge badge-${r.status || 'RUNNING'}">${esc(r.status || 'RUNNING')}</span></td>
+        <td><span class="badge ${colClass}">${esc(r.collection_status || 'Pending')}</span></td>
+        <td><span class="badge ${subClass}">${esc(r.submission_status || 'Not submitted')}</span></td>
+        <td style="font-family:monospace;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(r.flag)}">${esc(r.flag) || '<span style="color:var(--muted)">-</span>'}</td>
+        <td>${r.duration_ms != null ? r.duration_ms + 'ms' : '-'}</td>
+        <td style="color:var(--muted);font-size:12px">${esc(r.error || '')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function loadLatestBatch() {
+  try {
+    const r = await fetch('/api/results/latest-batch');
+    const d = await r.json();
+    if (d.active && d.batch) {
+      state.currentBatch = d.batch;
+      updateBatchStageUI(d.batch.stage || 'COMPLETED', d.batch);
+      renderBatchResultsTable(d.batch);
+    }
+  } catch {}
 }
 
 
@@ -1019,6 +1506,8 @@ function renderResultsTable(rows) {
       <td>${r.tick}</td>
       <td>${esc(r.exploit_name)}</td>
       <td>${esc(r.target_name)} <span style="color:var(--muted)">${esc(r.target_host)}</span></td>
+      <td><span class="badge ${badgeCollectionClass(r.collection_status)}">${esc(r.collection_status || '-')}</span></td>
+      <td><span class="badge ${badgeSubmissionClass(r.submission_status)}">${esc(r.submission_status || '-')}</span></td>
       <td><span class="badge badge-${r.status}">${r.status}</span></td>
       <td>${r.exit_code ?? '-'}</td>
       <td>${r.duration_ms != null ? r.duration_ms + 'ms' : '-'}</td>
@@ -1104,44 +1593,93 @@ function renderExploitsTable(exploits) {
 async function createExploit() {
   const name     = document.getElementById('expName').value.trim();
   const filename = document.getElementById('expFilename').value.trim();
-  const runtime  = document.getElementById('expRuntime').value.trim();
+  const runtime  = document.getElementById('expRuntime').value.trim() || 'python3';
   const args     = document.getElementById('expArgs').value.trim();
   const timeout  = parseInt(document.getElementById('expTimeout').value) || 30;
   const enabled  = document.getElementById('expEnabled').value === '1';
   const source   = document.getElementById('expSource').value;
-
-  if (!name || !filename) { alert('Name and filename are required'); return; }
-
-  // 1. Create exploit record
-  const r = await fetch('/api/exploits', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ name, filename, runtime, args, timeout, enabled, target_mode: 'all' })
-  });
-  if (!r.ok) { alert('Failed to create exploit: ' + await r.text()); return; }
-  const exploit = await r.json();
-
-  // 2. If source tab active, save source
-  const pasteTab = document.getElementById('tab-source-paste');
-  const uploadTab = document.getElementById('tab-source-upload');
   const fileInput = document.getElementById('expFileUpload');
+  const pastePanel = document.getElementById('tab-source-paste');
+  const uploadPanel = document.getElementById('tab-source-upload');
+  const usePaste = pastePanel.classList.contains('active');
+  const useUpload = uploadPanel.classList.contains('active');
+  const msg = document.getElementById('expMsg');
+  const btn = document.getElementById('btnCreateExploit');
 
-  if (pasteTab.classList.contains('active') && source.trim()) {
-    await fetch(`/api/exploits/${exploit.id}`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ source })
-    });
-  } else if (fileInput.files.length > 0) {
-    const fd = new FormData();
-    fd.append('file', fileInput.files[0]);
-    await fetch(`/api/exploits/${exploit.id}/upload`, { method: 'POST', body: fd });
+  function setMsg(text, color='var(--muted)') {
+    msg.style.color = color;
+    msg.textContent = text;
   }
 
-  await loadExploits();
-  // Switch to list tab
-  document.querySelector('[data-tab="exploit-list"]').click();
-  addLog(`✅ Exploit "${name}" created`, 'success');
+  if (!name || !filename) { setMsg('❌ Name and filename are required', 'var(--red)'); return; }
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    setMsg('❌ Filename must be a simple file name, not a path', 'var(--red)');
+    return;
+  }
+  if (usePaste && !source.trim()) { setMsg('❌ Paste source is empty', 'var(--red)'); return; }
+  if (useUpload && fileInput.files.length === 0) { setMsg('❌ Select a file to upload', 'var(--red)'); return; }
+
+  btn.disabled = true;
+  setMsg('Saving exploit...');
+  let exploit = null;
+  try {
+    // 1. Create exploit metadata
+    const r = await fetch('/api/exploits', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, filename, runtime, args, timeout, enabled, target_mode: 'all' })
+    });
+    if (!r.ok) throw new Error('Create failed: ' + await r.text());
+    exploit = await r.json();
+
+    // 2. Persist source or uploaded file into the configured filename
+    let contentResp;
+    if (usePaste) {
+      contentResp = await fetch(`/api/exploits/${exploit.id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source })
+      });
+    } else {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      contentResp = await fetch(`/api/exploits/${exploit.id}/upload`, { method: 'POST', body: fd });
+    }
+    if (!contentResp.ok) throw new Error('File/source save failed: ' + await contentResp.text());
+
+    await loadExploits();
+    resetExploitForm();
+    document.querySelector('[data-tab="exploit-list"]').click();
+    addLog(`✅ Exploit "${name}" created`, 'success');
+  } catch (e) {
+    if (exploit && exploit.id) {
+      try { await fetch(`/api/exploits/${exploit.id}`, { method: 'DELETE' }); } catch {}
+    }
+    setMsg(`❌ ${e.message || e}`, 'var(--red)');
+    addLog(`❌ Exploit create failed: ${e.message || e}`, 'failed');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function updateExploitUploadLabel() {
+  const fileInput = document.getElementById('expFileUpload');
+  const label = document.getElementById('expUploadLabel');
+  if (!fileInput || !label) return;
+  label.textContent = fileInput.files.length ? `Selected: ${fileInput.files[0].name}` : 'No file selected';
+}
+
+function resetExploitForm() {
+  document.getElementById('expName').value = '';
+  document.getElementById('expFilename').value = '';
+  document.getElementById('expRuntime').value = 'python3';
+  document.getElementById('expArgs').value = '';
+  document.getElementById('expTimeout').value = '30';
+  document.getElementById('expEnabled').value = '1';
+  document.getElementById('expSource').value = '';
+  document.getElementById('expFileUpload').value = '';
+  updateExploitUploadLabel();
+  document.getElementById('expMsg').textContent = '';
 }
 
 async function editExploit(id) {
@@ -1156,7 +1694,7 @@ async function editExploit(id) {
       <div class="form-group"><label>Name</label><input id="em_name" value="${esc(e.name)}"></div>
       <div class="form-group"><label>Runtime</label><input id="em_runtime" value="${esc(e.runtime)}"></div>
       <div class="form-group"><label>Timeout</label><input type="number" id="em_timeout" value="${e.timeout}"></div>
-      <div class="form-group"><label>Extra Args</label><input id="em_args" value="${esc(e.args)}"></div>
+      <div class="form-group"><label>Extra Args (after host and port)</label><input id="em_args" value="${esc(e.args)}"></div>
       <div class="form-group"><label>Enabled</label>
         <select id="em_enabled">
           <option value="1" ${e.enabled?'selected':''}>Yes</option>
@@ -1324,12 +1862,13 @@ function showPage(name) {
   document.getElementById(`page-${name}`)?.classList.add('active');
   document.querySelector(`[data-page="${name}"]`)?.classList.add('active');
 
-  if (name === 'dashboard') { fetchStatus(); }
-  if (name === 'exploits')  loadExploits();
-  if (name === 'targets')   loadTargets();
-  if (name === 'results')   loadResults();
-  if (name === 'config')    { loadConfig(); loadSubmitConfig(); }
-  if (name === 'flags')     loadFlags();
+  if (name === 'dashboard')   { fetchStatus(); loadLatestBatch(); }
+  if (name === 'competition') loadCompetitionConfig();
+  if (name === 'exploits')    loadExploits();
+  if (name === 'targets')     loadTargets();
+  if (name === 'results')     loadResults();
+  if (name === 'config')      { loadConfig(); loadSubmitConfig(); }
+  if (name === 'flags')       loadFlags();
 }
 
 
@@ -1341,11 +1880,17 @@ document.querySelectorAll('[data-page]').forEach(el => {
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const target = tab.dataset.tab;
-    const parent = tab.closest('.card') || tab.closest('.modal');
-    parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const tabBar = tab.closest('.tab-bar');
+    const container = tabBar?.parentElement || tab.closest('.card') || tab.closest('.modal');
+    if (!container) return;
+
+    // Scope to the clicked tab bar only. This prevents nested tab bars such as
+    // Exploits → Add Exploit → Paste/Upload from deactivating the parent
+    // List/Add Exploit tabs and hiding the whole form.
+    tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    container.querySelectorAll(':scope > .tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById(`tab-${target}`)?.classList.add('active');
+    container.querySelector(`#tab-${target}`)?.classList.add('active');
   });
 });
 
@@ -1515,14 +2060,185 @@ async function flagsNext() {
   await fetchFlags();
 }
 
+// ── Centralized Competition Config ───────────────────────────────────────────
+async function loadCompetitionConfig() {
+  try {
+    const r = await fetch('/api/competition/config');
+    const d = await r.json();
+
+    // Team
+    document.getElementById('compTeamId').value       = d.team.team_id || '';
+    document.getElementById('compTeamName').value     = d.team.team_name || '';
+    document.getElementById('compTeamIp').value       = d.team.team_ip || '';
+    document.getElementById('compTeamPassword').value = d.team.team_password || '';
+
+    // Scoreboard API
+    document.getElementById('compSubmitMode').value   = d.api.submit_mode || 'http_json';
+    document.getElementById('compSubmitUrl').value    = d.api.submit_url || '';
+    document.getElementById('compSubmitToken').value  = d.api.submit_token || '';
+    document.getElementById('compSubmitHost').value   = d.api.submit_host || '';
+    document.getElementById('compSubmitPort').value   = d.api.submit_port || 31337;
+    document.getElementById('compFlagRegex').value    = d.api.flag_regex || '';
+
+    // Execution
+    document.getElementById('compSubmitEnabled').value  = d.execution.submit_enabled ? '1' : '0';
+    document.getElementById('compConcurrency').value    = d.execution.concurrency || 20;
+    document.getElementById('compExploitTimeout').value = d.execution.exploit_timeout || 30;
+    document.getElementById('compCollectionDeadline').value = d.execution.collection_deadline ?? 30;
+    document.getElementById('compTickInterval').value   = d.execution.tick_interval || 60;
+    document.getElementById('compTickCount').value      = d.execution.tick_count ?? 100;
+    document.getElementById('compContinuous').value     = d.execution.continuous ? '1' : '0';
+    document.getElementById('compFlagLifetime').value   = d.execution.flag_lifetime || 300;
+    document.getElementById('compSubmitInterval').value = d.execution.submit_interval || 5;
+
+    updateCompModeUI();
+  } catch(e) {
+    console.error('Failed to load competition config', e);
+  }
+}
+
+async function saveCompetitionConfig() {
+  const team_id = document.getElementById('compTeamId').value.trim();
+  const team_name = document.getElementById('compTeamName').value.trim();
+
+  const msg = document.getElementById('compMsg');
+
+  // Client-side validation
+  if (!team_id) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = '❌ Team ID is required';
+    return;
+  }
+  if (!team_name) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = '❌ Team Name is required';
+    return;
+  }
+
+  const payload = {
+    team: {
+      team_id: team_id,
+      team_name: team_name,
+      team_ip: document.getElementById('compTeamIp').value.trim(),
+      team_password: document.getElementById('compTeamPassword').value,
+    },
+    api: {
+      submit_mode: document.getElementById('compSubmitMode').value,
+      submit_url: document.getElementById('compSubmitUrl').value.trim(),
+      submit_token: document.getElementById('compSubmitToken').value.trim(),
+      submit_host: document.getElementById('compSubmitHost').value.trim(),
+      submit_port: parseInt(document.getElementById('compSubmitPort').value) || 31337,
+      flag_regex: document.getElementById('compFlagRegex').value.trim(),
+    },
+    execution: {
+      tick_count: parseInt(document.getElementById('compTickCount').value) || 0,
+      tick_interval: parseInt(document.getElementById('compTickInterval').value) || 60,
+      exploit_timeout: parseInt(document.getElementById('compExploitTimeout').value) || 30,
+      collection_deadline: parseInt(document.getElementById('compCollectionDeadline').value) || 0,
+      concurrency: parseInt(document.getElementById('compConcurrency').value) || 20,
+      continuous: document.getElementById('compContinuous').value === '1',
+      submit_enabled: document.getElementById('compSubmitEnabled').value === '1',
+      submit_interval: parseInt(document.getElementById('compSubmitInterval').value) || 5,
+      flag_lifetime: parseInt(document.getElementById('compFlagLifetime').value) || 300,
+    }
+  };
+
+  try {
+    const r = await fetch('/api/competition/config', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (r.ok) {
+      msg.style.color = 'var(--green)';
+      msg.textContent = '✅ Configuration saved successfully!';
+      addLog('🏆 Centralized competition configuration updated', 'success');
+      // Sync other config views
+      loadConfig();
+      loadSubmitConfig();
+    } else {
+      msg.style.color = 'var(--red)';
+      msg.textContent = `❌ ${d.detail || 'Save failed'}`;
+    }
+  } catch(e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = `❌ Error: ${e}`;
+  }
+  setTimeout(() => msg.textContent = '', 5000);
+}
+
+async function testCompetitionConnection() {
+  const msg = document.getElementById('compMsg');
+  msg.style.color = 'var(--blue)';
+  msg.textContent = 'Testing connection...';
+
+  const payload = {
+    team: {
+      team_id: document.getElementById('compTeamId').value.trim() || '1',
+      team_name: document.getElementById('compTeamName').value.trim() || 'MyTeam',
+      team_ip: document.getElementById('compTeamIp').value.trim(),
+      team_password: document.getElementById('compTeamPassword').value,
+    },
+    api: {
+      submit_mode: document.getElementById('compSubmitMode').value,
+      submit_url: document.getElementById('compSubmitUrl').value.trim(),
+      submit_token: document.getElementById('compSubmitToken').value.trim(),
+      submit_host: document.getElementById('compSubmitHost').value.trim(),
+      submit_port: parseInt(document.getElementById('compSubmitPort').value) || 31337,
+      flag_regex: document.getElementById('compFlagRegex').value.trim(),
+    },
+    execution: {
+      tick_count: 100, tick_interval: 60, exploit_timeout: 30, concurrency: 20,
+      continuous: false, submit_enabled: true, submit_interval: 5, flag_lifetime: 300
+    }
+  };
+
+  try {
+    const r = await fetch('/api/competition/test_connection', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.style.color = 'var(--green)';
+      msg.textContent = `✅ ${d.message}`;
+      addLog(`🔌 Scoreboard test: ${d.message}`, 'success');
+    } else {
+      msg.style.color = 'var(--red)';
+      msg.textContent = `❌ ${d.message}`;
+      addLog(`🔌 Scoreboard test failed: ${d.message}`, 'failed');
+    }
+  } catch(e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = `❌ Test connection failed: ${e}`;
+  }
+}
+
+function updateCompModeUI() {
+  const mode = document.getElementById('compSubmitMode').value;
+  const isTCP = mode === 'tcp';
+  document.getElementById('compUrlGroup').style.display   = isTCP ? 'none' : '';
+  document.getElementById('compTokenGroup').style.display = isTCP ? 'none' : '';
+  document.getElementById('compHostGroup').style.display  = isTCP ? '' : 'none';
+  document.getElementById('compPortGroup').style.display  = isTCP ? '' : 'none';
+}
+
+function togglePassVisibility(id) {
+  const el = document.getElementById(id);
+  if (el.type === 'password') el.type = 'text';
+  else el.type = 'password';
+}
+
 // Periodic flag badge refresh
 setInterval(fetchFlagStats, 15000);
-
-
 
 connectWS();
 fetchStatus();
 loadConfig();
+loadLatestBatch();
+loadCompetitionConfig();
 
 // Periodic status refresh as fallback
 setInterval(fetchStatus, 10000);

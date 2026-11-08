@@ -22,6 +22,8 @@ services:
       - aufarm_logs:/logs
       # Hot-reload frontend: edit frontend/index.html and refresh browser
       - ./frontend:/frontend:ro
+      # Backend source mounted for live updates
+      - ./backend:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
       interval: 30s

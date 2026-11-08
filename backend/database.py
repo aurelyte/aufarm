@@ -63,6 +63,9 @@ CREATE TABLE IF NOT EXISTS results (
     duration_ms INTEGER,
     stdout      TEXT    NOT NULL DEFAULT '',
     stderr      TEXT    NOT NULL DEFAULT '',
+    flag        TEXT    NOT NULL DEFAULT '',
+    collection_status TEXT NOT NULL DEFAULT '',
+    submission_status TEXT NOT NULL DEFAULT '',
     started_at  TEXT,
     finished_at TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -94,6 +97,7 @@ INSERT OR IGNORE INTO farm_config (key, value) VALUES
     ('tick_count',        '100'),
     ('tick_interval',     '60'),
     ('exploit_timeout',   '30'),
+    ('collection_deadline','30'),
     ('concurrency',       '20'),
     ('current_tick',      '0'),
     ('farm_status',       'STOPPED'),
@@ -106,13 +110,42 @@ INSERT OR IGNORE INTO farm_config (key, value) VALUES
     ('submit_port',       '31337'),
     ('flag_regex',        '[A-Za-z0-9_]{2,16}\\{[A-Za-z0-9_+=\\-/\\.]{8,}\\}'),
     ('submit_interval',   '5'),
-    ('flag_lifetime',     '300');
+    ('flag_lifetime',     '300'),
+    ('team_id',           '1'),
+    ('team_name',         'MyTeam'),
+    ('team_ip',           ''),
+    ('team_password',     '');
 
 """
 
 
 async def init_db() -> None:
-    """Create the database schema if it doesn't exist."""
+    """Create the database schema if it doesn't exist and run safe migrations."""
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         await db.executescript(SCHEMA)
+        await db.commit()
+
+        # Migrate existing results table if new columns missing
+        async with db.execute("PRAGMA table_info(results)") as cur:
+            columns = [r["name"] for r in await cur.fetchall()]
+
+        if "flag" not in columns:
+            await db.execute("ALTER TABLE results ADD COLUMN flag TEXT NOT NULL DEFAULT ''")
+        if "collection_status" not in columns:
+            await db.execute("ALTER TABLE results ADD COLUMN collection_status TEXT NOT NULL DEFAULT ''")
+        if "submission_status" not in columns:
+            await db.execute("ALTER TABLE results ADD COLUMN submission_status TEXT NOT NULL DEFAULT ''")
+
+        # Ensure team config defaults
+        team_defaults = [
+            ("team_id", "1"),
+            ("team_name", "MyTeam"),
+            ("team_ip", ""),
+            ("team_password", ""),
+            ("collection_deadline", "30"),
+        ]
+        for k, v in team_defaults:
+            await db.execute("INSERT OR IGNORE INTO farm_config (key, value) VALUES (?, ?)", (k, v))
+
         await db.commit()

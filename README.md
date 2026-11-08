@@ -154,13 +154,19 @@ Each exploit has:
 AuFarm calls your exploit as:
 
 ```
-<runtime> <script> <target_host> [target_port] [extra_args...]
+<runtime> <script> <target_host> <target_port> [extra_args...]
 ```
 
 Environment variables also set:
 ```
 TARGET_HOST, TARGET_PORT, TARGET_NAME, TARGET_SERVICE, AUFARM_TICK
 ```
+
+`target_port` is always present (`0` when unspecified). Extra args support shell-style
+quoting but are executed without a shell. New scripts must emit
+`AUFARM_RESULT {"flags":[...]}` records on stdout and diagnostics on stderr; only a
+zero-exit invocation can contribute flags. See the [exploit script development guide](docs/exploit-script-guide.md)
+for the complete output protocol, exit statuses, local mock example, and security boundaries.
 
 ### Paste source
 
@@ -254,12 +260,13 @@ This fires a single tick immediately, regardless of farm state.
 
 The farm will:
 1. Fire tick 1 at `t=0`
-2. Launch all `(exploit × target)` combinations concurrently (up to concurrency limit)
-3. Collect stdout/stderr, exit code, duration for each job
-4. Save results to SQLite
-5. Broadcast live updates over WebSocket to all connected browsers
-6. Fire tick 2 at `t=tick_interval` (clock-anchored, not drift-accumulating)
-7. Continue until tick count reached or STOP is pressed
+2. Process enabled exploits service/vulnerability by service/vulnerability
+3. For one exploit, run it against all configured opponent targets concurrently (up to the concurrency limit)
+4. Collect stdout/stderr, exit code, duration, extracted flags, and per-IP collection status
+5. Wait until every opponent target for that exploit has finished or timed out
+6. Submit all flags collected for that exploit in one batch submission phase
+7. Save per-IP collection/submission results to SQLite and broadcast live updates over WebSocket
+8. Continue to the next exploit, then fire the next tick at `t=tick_interval` (clock-anchored, not drift-accumulating)
 
 **Closing the browser does NOT stop the farm.** The scheduler runs entirely in the container.
 
@@ -277,15 +284,17 @@ you press STOP. Tick Count is ignored.
 AuFarm has a built-in flag harvesting and submission engine inspired by real CTF A&D setups (CTFd, Siberlab, ForcAD, etc.):
 
 ```
-Exploit stdout
+Per-service exploit batch
       ↓
-Regex Extraction (configurable pattern)
+Run exploit against all opponent IPs
+      ↓
+Regex Extraction from each target stdout
       ↓
 Deduplication via SQLite `flags` table
       ↓
-Submitter Loop (independent periodic task)
+Batch submission after collection for that service completes
       ↓
-Competition Scoring Server (HTTP JSON / HTTP Form / TCP)
+Competition Scoring Server (HTTP JSON / Form / TCP)
 ```
 
 ### Supported Submission Modes
@@ -299,16 +308,20 @@ Competition Scoring Server (HTTP JSON / HTTP Form / TCP)
 3. **TCP** (`tcp`) — Raw TCP socket (e.g., Destructive Farm / ForcAD):
    - Connects to gameserver host:port, sends line-by-line flags, parses response.
 
-### Configuration via UI
+### Centralized Configuration via UI
 
-Go to **Settings → Flag Auto-Submission**:
-- **Enabled**: Toggle auto-submission on/off.
-- **Mode**: Choose `HTTP JSON`, `HTTP Form`, or `TCP`.
-- **Submit URL / Token**: Target scoreboard URL and your team's API token.
-- **Flag Regex**: Custom regex pattern (e.g. `polriCTF\{[^}]+\}` or `[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,}\}`). If blank, uses a robust default.
-- **Submit Interval**: How often (seconds) the submitter checks for and dispatches queued flags.
-- **Flag Lifetime**: Auto-expire stale queued flags if older than N seconds.
-- **⚡ Submit Now**: Trigger an immediate submission round without waiting for the interval.
+Go to **Competition Config** for the unified configuration window:
+- **Team Identity**: team ID/name, own team IP, and team secret. Targets matching the own team IP are excluded from exploit execution.
+- **Scoreboard API**: submission mode (`HTTP JSON`, `HTTP Form`, or `TCP`), submit URL/host/port, API token, and flag regex.
+- **Execution & Batch**: tick count/interval, concurrency, exploit timeout, collection deadline, auto-submit toggle, submit retry interval, and flag lifetime.
+- **Save Configuration**: persists all settings to SQLite-backed farm config.
+- **Test Scoreboard Connection**: probes the configured scoreboard without submitting real flags.
+
+The legacy **Settings → Flag Auto-Submission** page remains available for compatibility, but Competition Config is the central place for match setup. Sensitive fields are masked in the UI and preserved server-side when saving unchanged.
+
+During a tick, flags are not submitted while exploits for the current service/vulnerability are still running. Submission starts only after all target IPs in that service batch finish collection or the configurable **Collection Deadline** is reached.
+
+**TTL safety note:** for best flag freshness, set concurrency at least equal to the number of opponent IPs so every target starts immediately. If concurrency is lower, queued targets wait for a worker slot; the Collection Deadline bounds the maximum wait before AuFarm cancels unfinished targets and submits already collected flags.
 
 ### Flag Monitoring Dashboard
 

@@ -78,6 +78,7 @@ class FarmConfig(BaseModel):
     tick_count: int = 100
     tick_interval: int = 60
     exploit_timeout: int = 30
+    collection_deadline: int = 30
     concurrency: int = 20
     continuous: bool = False
 
@@ -109,6 +110,69 @@ class ResultOut(BaseModel):
     duration_ms: Optional[int]
     stdout: str
     stderr: str
+    flag: str = ""
+    collection_status: str = ""
+    submission_status: str = ""
     started_at: Optional[str]
     finished_at: Optional[str]
     created_at: str
+
+
+# ── Centralized Competition Config Models ─────────────────────────────────────
+
+class TeamConfig(BaseModel):
+    team_id: str = "1"
+    team_name: str = "MyTeam"
+    team_ip: str = ""
+    team_password: str = ""
+
+
+class ScoreboardApiConfig(BaseModel):
+    submit_mode: str = "http_json"   # http_json | http_form | tcp
+    submit_url: str = ""
+    submit_token: str = ""
+    submit_host: str = ""
+    submit_port: int = 31337
+    flag_regex: str = ""
+
+
+class ExecutionConfig(BaseModel):
+    tick_count: int = 100
+    tick_interval: int = 60
+    exploit_timeout: int = 30
+    collection_deadline: int = 30
+    concurrency: int = 20
+    continuous: bool = False
+    submit_enabled: bool = False
+    submit_interval: int = 5
+    flag_lifetime: int = 300
+
+
+class CentralizedConfig(BaseModel):
+    team: TeamConfig
+    api: ScoreboardApiConfig
+    execution: ExecutionConfig
+
+
+class TargetBatchResult(BaseModel):
+    target_id: int
+    target_name: str
+    target_host: str
+    collection_status: str
+    submission_status: str
+    flag: str = ""
+    exit_code: Optional[int] = None
+    duration_ms: Optional[int] = None
+    error: Optional[str] = None
+
+
+class ServiceBatchResult(BaseModel):
+    tick: int
+    exploit_id: int
+    exploit_name: str
+    stage: str
+    targets_count: int
+    flags_retrieved: int
+    flags_submitted: int
+    duration_ms: Optional[int] = None
+    results: list[TargetBatchResult] = []
