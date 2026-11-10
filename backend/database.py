@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS exploits (
     enabled     INTEGER NOT NULL DEFAULT 1,
     timeout     INTEGER NOT NULL DEFAULT 30,
     target_mode TEXT    NOT NULL DEFAULT 'all',
+    adapter     TEXT    NOT NULL DEFAULT '{"mode":"positional"}',
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -130,7 +131,7 @@ INSERT OR IGNORE INTO farm_config (key, value) VALUES
     ('submit_token',      ''),
     ('submit_host',       ''),
     ('submit_port',       '31337'),
-    ('flag_regex',        '[A-Za-z0-9_]{2,16}\\{[A-Za-z0-9_+=\\-/\\.]{8,}\\}'),
+    ('flag_regex',        'GEMASTIK\\{[^{}\\r\\n]{48}\\}'),
     ('submit_interval',   '5'),
     ('flag_lifetime',     '300'),
     ('team_id',           '17'),
@@ -149,6 +150,11 @@ async def init_db() -> None:
         await db.commit()
 
         # Migrate existing results table if new columns missing
+        async with db.execute("PRAGMA table_info(exploits)") as cur:
+            exploit_columns = [r["name"] for r in await cur.fetchall()]
+        if "adapter" not in exploit_columns:
+            await db.execute("ALTER TABLE exploits ADD COLUMN adapter TEXT NOT NULL DEFAULT '{\"mode\":\"positional\"}'")
+
         async with db.execute("PRAGMA table_info(results)") as cur:
             columns = [r["name"] for r in await cur.fetchall()]
 
@@ -178,6 +184,15 @@ async def init_db() -> None:
             if row and row["value"] == sample:
                 value = {"team_id": "17", "team_name": "ION lalala", "team_ip": "10.13.37.15"}[key]
                 await db.execute("UPDATE farm_config SET value = ? WHERE key = ?", (value, key))
+
+        async with db.execute("SELECT value FROM farm_config WHERE key = 'flag_regex'") as cur:
+            regex_row = await cur.fetchone()
+        previous_default_regex = r"[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,}\}"
+        if regex_row and regex_row["value"] == previous_default_regex:
+            await db.execute(
+                "UPDATE farm_config SET value = ? WHERE key = 'flag_regex'",
+                (r"GEMASTIK\{[^{}\r\n]{48}\}",),
+            )
 
         # Normalize saved targets for this competition while retaining service ports.
         for host, name in OPPONENTS.items():

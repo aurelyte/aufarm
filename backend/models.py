@@ -6,7 +6,7 @@ Pydantic models for request/response validation and internal data structures.
 
 from __future__ import annotations
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Target Models ─────────────────────────────────────────────────────────────
@@ -47,6 +47,7 @@ class ExploitCreate(BaseModel):
     enabled: bool = True
     timeout: int = 30
     target_mode: str = "all"   # "all" or comma-separated target IDs
+    adapter: dict[str, str] = Field(default_factory=lambda: {"mode": "positional"})
 
 
 class ExploitUpdate(BaseModel):
@@ -56,6 +57,7 @@ class ExploitUpdate(BaseModel):
     enabled: Optional[bool] = None
     timeout: Optional[int] = None
     target_mode: Optional[str] = None
+    adapter: Optional[dict[str, str]] = None
     source: Optional[str] = None   # updated source code (written to file)
 
 
@@ -68,6 +70,7 @@ class ExploitOut(BaseModel):
     enabled: bool
     timeout: int
     target_mode: str
+    adapter: dict[str, str] = Field(default_factory=lambda: {"mode": "positional"})
     created_at: str
     updated_at: str
 
@@ -133,7 +136,7 @@ class ScoreboardApiConfig(BaseModel):
     submit_token: str = ""
     submit_host: str = ""
     submit_port: int = 31337
-    flag_regex: str = ""
+    flag_regex: str = r"GEMASTIK\{[^{}\r\n]{48}\}"
 
 
 class ExecutionConfig(BaseModel):

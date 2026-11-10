@@ -43,7 +43,7 @@ async def get_competition_config():
                 submit_token=_mask_secret(cfg.get("submit_token", "")),
                 submit_host=cfg.get("submit_host", ""),
                 submit_port=int(cfg.get("submit_port", 31337)),
-                flag_regex=cfg.get("flag_regex", ""),
+                flag_regex=cfg.get("flag_regex", r"GEMASTIK\{[^{}\r\n]{48}\}"),
             ),
             execution=ExecutionConfig(
                 tick_count=int(cfg.get("tick_count", 100)),

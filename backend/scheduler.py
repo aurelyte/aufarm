@@ -17,15 +17,16 @@ Design goals:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
-import shlex
 import signal
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from database import get_db
+from exploit_adapter import build_invocation, DEFAULT_ADAPTER
 
 logger = logging.getLogger("aufarm.scheduler")
 
@@ -822,17 +823,17 @@ class FarmScheduler:
         runtime = exploit.get("runtime", "python3").strip()
         extra_args = exploit.get("args", "").strip()
 
-        # Stable interface: <runtime> <script> <host> <port> [extra_args...].
-        # shlex allows configured arguments such as --label "blue team".
-        cmd = []
-        if runtime:
-            cmd.append(runtime)
-        cmd.append(script_path)
-        cmd.append(target["host"])
-        cmd.append(str(target.get("port", 0)))
         try:
-            if extra_args:
-                cmd.extend(shlex.split(extra_args))
+            raw_adapter = exploit.get("adapter") or DEFAULT_ADAPTER
+            adapter = json.loads(raw_adapter) if isinstance(raw_adapter, str) else raw_adapter
+            cmd, adapter_env = build_invocation(
+                script_path,
+                runtime,
+                target["host"],
+                target.get("port", 0),
+                extra_args,
+                adapter,
+            )
         except ValueError as exc:
             return self._make_result(
                 tick, exploit, target,
@@ -857,6 +858,7 @@ class FarmScheduler:
             "TEAM_NAME": cfg.get("team_name", "MyTeam"),
             "TEAM_IP": cfg.get("team_ip", ""),
         }
+        env.update(adapter_env)
 
         started_at = datetime.now(timezone.utc).isoformat()
         t0 = time.monotonic()

@@ -37,6 +37,7 @@ from scheduler import broadcaster
 logger = logging.getLogger("aufarm.submitter")
 
 GEMASTIK_SUBMIT_URL = "https://gemastik19-finals.siberlab.id/api/flag"
+GEMASTIK_FLAG_REGEX = r"GEMASTIK\{[^{}\r\n]{48}\}"
 
 # Serializes all scoreboard submissions so manual/background submission cannot race
 # with the scheduler's per-service batch submission.
@@ -80,7 +81,7 @@ def extract_flags(text: str, pattern: str) -> list[str]:
     with one or more capture groups still return the actual flag text.
     """
     if not pattern:
-        pattern = r"[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,}\}"
+        pattern = GEMASTIK_FLAG_REGEX
     try:
         seen = set()
         flags: list[str] = []

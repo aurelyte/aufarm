@@ -54,7 +54,7 @@ async def get_submit_config():
             "submit_token":    SECRET_MASK if cfg.get("submit_token", "") else "",
             "submit_host":     cfg.get("submit_host", ""),
             "submit_port":     int(cfg.get("submit_port", 31337)),
-            "flag_regex":      cfg.get("flag_regex", ""),
+            "flag_regex":      cfg.get("flag_regex", r"GEMASTIK\{[^{}\r\n]{48}\}"),
             "submit_interval": int(cfg.get("submit_interval", 5)),
             "flag_lifetime":   int(cfg.get("flag_lifetime", 300)),
         }

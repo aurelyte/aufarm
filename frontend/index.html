@@ -686,8 +686,13 @@
               <input type="number" id="compSubmitPort" value="31337">
             </div>
             <div class="form-group" style="grid-column: 1 / -1">
-              <label>Flag Extraction Regex <span style="color:var(--muted);font-size:11px">(matches flags in exploit stdout)</span></label>
-              <input id="compFlagRegex" placeholder="[A-Za-z0-9_]{2,16}\{[A-Za-z0-9_+=\-/\.]{8,\}" style="font-family:monospace">
+              <label>Flag format</label>
+              <select id="compFlagPreset" onchange="applyFlagPreset('compFlagPreset','compFlagRegex')">
+                <option value="gemastik">Gemastik XIX — 48 random characters</option>
+                <option value="custom">Custom regex</option>
+              </select>
+              <label style="margin-top:6px">Flag extraction regex <span style="color:var(--muted);font-size:11px">(checks flags found in exploit output)</span></label>
+              <input id="compFlagRegex" oninput="markCustomFlagPreset('compFlagPreset')" placeholder="GEMASTIK\{[^{}\r\n]{48}\}" style="font-family:monospace">
             </div>
           </div>
         </div>
@@ -782,30 +787,7 @@
           <div class="form-grid">
             <div class="form-group">
               <label>Name *</label>
-              <input id="expName" placeholder="web_rce">
-            </div>
-            <div class="form-group">
-              <label>Filename *</label>
-              <input id="expFilename" placeholder="web_rce.py">
-            </div>
-            <div class="form-group">
-              <label>Runtime</label>
-              <input id="expRuntime" value="python3">
-            </div>
-            <div class="form-group">
-              <label>Extra Args (after host and port)</label>
-              <input id="expArgs" placeholder='--mode safe --label "blue team"'>
-            </div>
-            <div class="form-group">
-              <label>Timeout (s)</label>
-              <input type="number" id="expTimeout" value="30">
-            </div>
-            <div class="form-group">
-              <label>Enabled</label>
-              <select id="expEnabled">
-                <option value="1">Yes</option>
-                <option value="0">No</option>
-              </select>
+              <input id="expName" placeholder="web_rce" oninput="suggestExploitFilename()">
             </div>
           </div>
 
@@ -815,9 +797,7 @@
               <div class="tab" data-tab="source-upload">Upload File</div>
             </div>
             <div class="tab-content active" id="tab-source-paste">
-              <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">
-                Exploit Source Code
-              </label>
+              <label style="display:block;margin-bottom:4px;color:var(--muted);font-size:12px">Paste Python source; AuFarm inspects how it accepts host and port.</label>
               <textarea class="code-editor" id="expSource" placeholder="#!/usr/bin/env python3
 # AuFarm exploit template
 # Args: target_host target_port [configured extra args]
@@ -831,12 +811,42 @@ port = int(sys.argv[2]) if len(sys.argv) > 2 else 80
 print(f'Checking {host}:{port}', file=sys.stderr)
 print('AUFARM_RESULT ' + json.dumps({'flags': []}))
 "></textarea>
+              <div class="form-actions" style="align-items:center;margin-top:8px">
+                <button type="button" onclick="analyzeExploitSource()">🔎 Analyze format</button>
+                <span id="expAnalysis" style="font-size:12px;color:var(--muted)">Paste source and analyze before saving.</span>
+              </div>
             </div>
             <div class="tab-content" id="tab-source-upload">
               <input type="file" id="expFileUpload" style="margin-top:4px" onchange="updateExploitUploadLabel()">
               <div id="expUploadLabel" style="font-size:12px;color:var(--muted);margin-top:6px">No file selected</div>
             </div>
           </div>
+
+          <details style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--muted);font-size:12px">Advanced settings and manual input mapping</summary>
+            <div class="form-grid" style="margin-top:12px">
+              <div class="form-group"><label>Filename (auto-generated if blank)</label><input id="expFilename" placeholder="web_rce.py"></div>
+              <div class="form-group"><label>Runtime</label><input id="expRuntime" value="python3"></div>
+              <div class="form-group"><label>Input format</label>
+                <select id="expAdapterMode" onchange="updateAdapterFields()">
+                  <option value="auto">Use detected format</option>
+                  <option value="positional">HOST PORT arguments</option>
+                  <option value="flags">Named CLI options</option>
+                  <option value="env">Environment variables</option>
+                </select>
+              </div>
+              <div class="form-group adapter-flag-fields"><label>Host option</label><input id="expHostOption" value="--host"></div>
+              <div class="form-group adapter-flag-fields"><label>Port option</label><input id="expPortOption" value="--port"></div>
+              <div class="form-group adapter-env-fields"><label>Host environment key</label><input id="expHostEnv" value="TARGET_HOST"></div>
+              <div class="form-group adapter-env-fields"><label>Port environment key</label><input id="expPortEnv" value="TARGET_PORT"></div>
+              <div class="form-group"><label>Extra Args</label><input id="expArgs" placeholder='--mode safe --label "blue team"'></div>
+              <div class="form-group"><label>Timeout (s)</label><input type="number" id="expTimeout" value="30"></div>
+              <div class="form-group"><label>Enabled</label><select id="expEnabled"><option value="1">Yes</option><option value="0">No</option></select></div>
+              <div class="form-group" style="grid-column:1/-1">
+                <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="expAdapterConfirmed" style="width:auto"> I checked the input mapping because detection was uncertain</label>
+              </div>
+            </div>
+          </details>
 
           <div class="form-actions" style="align-items:center;gap:10px">
             <button class="btn-green" onclick="createExploit()" id="btnCreateExploit">💾 Save Exploit</button>
@@ -975,8 +985,13 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
             <input type="number" id="subPort" value="31337">
           </div>
           <div class="form-group" style="grid-column:1/-1">
-            <label>Flag Regex <span style="color:var(--muted);font-weight:normal">(leave blank for default)</span></label>
-            <input id="subRegex" placeholder="polriCTF\{[^}]+\}" style="font-family:monospace">
+            <label>Flag format</label>
+            <select id="subFlagPreset" onchange="applyFlagPreset('subFlagPreset','subRegex')">
+              <option value="gemastik">Gemastik XIX — 48 random characters</option>
+              <option value="custom">Custom regex</option>
+            </select>
+            <label style="margin-top:6px">Flag extraction regex</label>
+            <input id="subRegex" oninput="markCustomFlagPreset('subFlagPreset')" placeholder="GEMASTIK\{[^{}\r\n]{48}\}" style="font-family:monospace">
           </div>
           <div class="form-group">
             <label>Submit Interval (seconds)</label>
@@ -1580,6 +1595,82 @@ function closeModal() {
 }
 
 // ── Exploits ──────────────────────────────────────────────────────────────────
+let lastExploitAnalysis = null;
+
+function suggestExploitFilename() {
+  const filename = document.getElementById('expFilename');
+  if (!filename || (filename.value.trim() && !filename.dataset.auto)) return;
+  const slug = document.getElementById('expName').value.trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (slug) { filename.value = `${slug}.py`; filename.dataset.auto = '1'; }
+}
+
+document.getElementById('expFilename')?.addEventListener('input', event => { event.target.dataset.auto = ''; });
+
+function updateAdapterFields() {
+  const mode = document.getElementById('expAdapterMode')?.value || 'auto';
+  document.querySelectorAll('.adapter-flag-fields').forEach(el => el.style.display = mode === 'flags' ? '' : 'none');
+  document.querySelectorAll('.adapter-env-fields').forEach(el => el.style.display = mode === 'env' ? '' : 'none');
+}
+updateAdapterFields();
+
+function selectedExploitAdapter() {
+  const mode = document.getElementById('expAdapterMode').value;
+  if (mode === 'auto') return lastExploitAnalysis?.adapter || {mode:'positional'};
+  if (mode === 'flags') return {
+    mode, host_option: document.getElementById('expHostOption').value.trim(),
+    port_option: document.getElementById('expPortOption').value.trim()
+  };
+  if (mode === 'env') return {
+    mode, host_env: document.getElementById('expHostEnv').value.trim(),
+    port_env: document.getElementById('expPortEnv').value.trim()
+  };
+  return {mode};
+}
+
+async function analyzeExploitSource() {
+  const source = document.getElementById('expSource').value;
+  const preview = document.getElementById('expAnalysis');
+  if (!source.trim()) { preview.textContent = 'Paste source first.'; preview.style.color = 'var(--yellow)'; return null; }
+  preview.textContent = 'Checking Python syntax and target inputs…';
+  preview.style.color = 'var(--muted)';
+  try {
+    const response = await fetch('/api/exploits/analyze', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({source})
+    });
+    const analysis = await response.json();
+    if (!response.ok) throw new Error(analysis.detail || 'Analysis failed');
+    lastExploitAnalysis = {...analysis, source};
+    if (!analysis.ok) {
+      preview.textContent = analysis.warnings.join(' ');
+      preview.style.color = 'var(--red)';
+      return analysis;
+    }
+    document.getElementById('expRuntime').value = analysis.runtime;
+    if (document.getElementById('expAdapterMode').value === 'auto') {
+      if (analysis.adapter.mode === 'flags') {
+        document.getElementById('expHostOption').value = analysis.adapter.host_option;
+        document.getElementById('expPortOption').value = analysis.adapter.port_option;
+      } else if (analysis.adapter.mode === 'env') {
+        document.getElementById('expHostEnv').value = analysis.adapter.host_env;
+        document.getElementById('expPortEnv').value = analysis.adapter.port_env;
+      }
+    }
+    const note = analysis.warnings.length ? ` — ${analysis.warnings.join(' ')}` : '';
+    preview.textContent = `${analysis.confidence.toUpperCase()}: ${analysis.summary}${note}`;
+    preview.style.color = analysis.confidence === 'high' ? 'var(--green)' : 'var(--yellow)';
+    return analysis;
+  } catch (error) {
+    lastExploitAnalysis = null;
+    preview.textContent = `Analysis failed: ${error.message || error}`;
+    preview.style.color = 'var(--red)';
+    return null;
+  }
+}
+
+document.getElementById('expSource')?.addEventListener('input', () => { lastExploitAnalysis = null; });
+
 async function loadExploits() {
   const r = await fetch('/api/exploits');
   const exploits = await r.json();
@@ -1608,8 +1699,9 @@ function renderExploitsTable(exploits) {
 
 async function createExploit() {
   const name     = document.getElementById('expName').value.trim();
+  suggestExploitFilename();
   const filename = document.getElementById('expFilename').value.trim();
-  const runtime  = document.getElementById('expRuntime').value.trim() || 'python3';
+  let runtime  = document.getElementById('expRuntime').value.trim() || 'python3';
   const args     = document.getElementById('expArgs').value.trim();
   const timeout  = parseInt(document.getElementById('expTimeout').value) || 30;
   const enabled  = document.getElementById('expEnabled').value === '1';
@@ -1627,13 +1719,33 @@ async function createExploit() {
     msg.textContent = text;
   }
 
-  if (!name || !filename) { setMsg('❌ Name and filename are required', 'var(--red)'); return; }
+  if (!name) { setMsg('❌ Name is required', 'var(--red)'); return; }
   if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
     setMsg('❌ Filename must be a simple file name, not a path', 'var(--red)');
     return;
   }
   if (usePaste && !source.trim()) { setMsg('❌ Paste source is empty', 'var(--red)'); return; }
   if (useUpload && fileInput.files.length === 0) { setMsg('❌ Select a file to upload', 'var(--red)'); return; }
+
+  let adapter = {mode:'positional'};
+  if (usePaste) {
+    let analysis = lastExploitAnalysis;
+    if (!analysis || analysis.source !== source) analysis = await analyzeExploitSource();
+    if (!analysis?.ok) { setMsg('❌ Fix the syntax or analysis error before saving', 'var(--red)'); return; }
+    runtime = analysis.runtime;
+    const selectedMode = document.getElementById('expAdapterMode').value;
+    if (selectedMode === 'auto' && analysis.confidence !== 'high' && !document.getElementById('expAdapterConfirmed').checked) {
+      setMsg('❌ Detection is uncertain. Choose an input format or confirm the positional mapping.', 'var(--yellow)');
+      return;
+    }
+    adapter = selectedExploitAdapter();
+    if (adapter.mode === 'flags' && (!adapter.host_option || !adapter.port_option)) {
+      setMsg('❌ Host and port CLI options are required', 'var(--red)'); return;
+    }
+    if (adapter.mode === 'env' && (!adapter.host_env || !adapter.port_env)) {
+      setMsg('❌ Host and port environment keys are required', 'var(--red)'); return;
+    }
+  }
 
   btn.disabled = true;
   setMsg('Saving exploit...');
@@ -1643,7 +1755,7 @@ async function createExploit() {
     const r = await fetch('/api/exploits', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name, filename, runtime, args, timeout, enabled, target_mode: 'all' })
+      body: JSON.stringify({ name, filename, runtime, args, timeout, enabled, target_mode: 'all', adapter })
     });
     if (!r.ok) throw new Error('Create failed: ' + await r.text());
     exploit = await r.json();
@@ -1688,11 +1800,22 @@ function updateExploitUploadLabel() {
 function resetExploitForm() {
   document.getElementById('expName').value = '';
   document.getElementById('expFilename').value = '';
+  document.getElementById('expFilename').dataset.auto = '';
   document.getElementById('expRuntime').value = 'python3';
+  document.getElementById('expAdapterMode').value = 'auto';
+  document.getElementById('expHostOption').value = '--host';
+  document.getElementById('expPortOption').value = '--port';
+  document.getElementById('expHostEnv').value = 'TARGET_HOST';
+  document.getElementById('expPortEnv').value = 'TARGET_PORT';
+  document.getElementById('expAdapterConfirmed').checked = false;
+  lastExploitAnalysis = null;
+  updateAdapterFields();
   document.getElementById('expArgs').value = '';
   document.getElementById('expTimeout').value = '30';
   document.getElementById('expEnabled').value = '1';
   document.getElementById('expSource').value = '';
+  document.getElementById('expAnalysis').textContent = 'Paste source and analyze before saving.';
+  document.getElementById('expAnalysis').style.color = 'var(--muted)';
   document.getElementById('expFileUpload').value = '';
   updateExploitUploadLabel();
   document.getElementById('expMsg').textContent = '';
@@ -1718,9 +1841,24 @@ async function editExploit(id) {
         </select>
       </div>
     </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Target input format</label>
+        <select id="emAdapterMode">
+          <option value="positional">HOST PORT arguments</option>
+          <option value="flags">Named CLI options</option>
+          <option value="env">Environment variables</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Host option / environment key</label><input id="emHostMapping"></div>
+      <div class="form-group"><label>Port option / environment key</label><input id="emPortMapping"></div>
+    </div>
     <div class="form-group" style="margin-bottom:10px">
       <label>Source Code</label>
       <textarea class="code-editor" id="em_source" style="height:280px">${esc(src)}</textarea>
+    </div>
+    <div class="form-actions" style="margin-bottom:10px">
+      <button type="button" onclick="analyzeEditedExploit(${id})">🔎 Analyze and apply mapping</button>
+      <span id="emAnalysis" style="font-size:12px;color:var(--muted)"></span>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <label style="color:var(--muted);align-self:center">Or upload new file:</label>
@@ -1731,7 +1869,32 @@ async function editExploit(id) {
       <button onclick="closeExploitModal()">Cancel</button>
     </div>
   `;
+  const adapter = e.adapter || {mode:'positional'};
+  document.getElementById('emAdapterMode').value = adapter.mode || 'positional';
+  document.getElementById('emHostMapping').value = adapter.host_option || adapter.host_env || '--host';
+  document.getElementById('emPortMapping').value = adapter.port_option || adapter.port_env || '--port';
   document.getElementById('exploitModal').classList.add('open');
+}
+
+async function analyzeEditedExploit(id) {
+  const msg = document.getElementById('emAnalysis');
+  msg.textContent = 'Analyzing Python source…';
+  try {
+    const response = await fetch('/api/exploits/analyze', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source:document.getElementById('em_source').value})
+    });
+    const result = await response.json();
+    if (!result.ok) throw new Error((result.warnings || []).join(' '));
+    document.getElementById('emAdapterMode').value = result.adapter.mode;
+    document.getElementById('emHostMapping').value = result.adapter.host_option || result.adapter.host_env || '--host';
+    document.getElementById('emPortMapping').value = result.adapter.port_option || result.adapter.port_env || '--port';
+    msg.textContent = `${result.confidence.toUpperCase()}: ${result.summary}`;
+    msg.style.color = result.confidence === 'high' ? 'var(--green)' : 'var(--yellow)';
+  } catch (error) {
+    msg.textContent = error.message || String(error);
+    msg.style.color = 'var(--red)';
+  }
 }
 
 async function saveExploit(id) {
@@ -1742,12 +1905,20 @@ async function saveExploit(id) {
   const enabled = document.getElementById('em_enabled').value === '1';
   const source  = document.getElementById('em_source').value;
   const fileEl  = document.getElementById('em_file');
+  const mode    = document.getElementById('emAdapterMode').value;
+  const mapping = [document.getElementById('emHostMapping').value.trim(), document.getElementById('emPortMapping').value.trim()];
+  const adapter = mode === 'flags'
+    ? {mode, host_option:mapping[0], port_option:mapping[1]}
+    : mode === 'env'
+      ? {mode, host_env:mapping[0], port_env:mapping[1]}
+      : {mode};
 
-  await fetch(`/api/exploits/${id}`, {
+  const update = await fetch(`/api/exploits/${id}`, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ name, runtime, timeout, args, enabled, source })
+    body: JSON.stringify({ name, runtime, timeout, args, enabled, source, adapter })
   });
+  if (!update.ok) { alert('Save failed: ' + await update.text()); return; }
 
   if (fileEl.files.length > 0) {
     const fd = new FormData();
@@ -1964,6 +2135,27 @@ function esc(s) {
 }
 
 // ── Submission config ─────────────────────────────────────────────────────────
+const GEMASTIK_FLAG_REGEX = String.raw`GEMASTIK\{[^{}\r\n]{48}\}`;
+
+function setFlagRegexPreset(presetId, regexId, value) {
+  const regex = document.getElementById(regexId);
+  regex.value = value || GEMASTIK_FLAG_REGEX;
+  document.getElementById(presetId).value = regex.value === GEMASTIK_FLAG_REGEX ? 'gemastik' : 'custom';
+}
+
+function applyFlagPreset(presetId, regexId) {
+  const preset = document.getElementById(presetId).value;
+  const regex = document.getElementById(regexId);
+  if (preset === 'gemastik') regex.value = GEMASTIK_FLAG_REGEX;
+  else if (regex.value === GEMASTIK_FLAG_REGEX) regex.value = '';
+}
+
+function markCustomFlagPreset(presetId) {
+  const regexId = presetId === 'compFlagPreset' ? 'compFlagRegex' : 'subRegex';
+  const regex = document.getElementById(regexId).value;
+  document.getElementById(presetId).value = regex === GEMASTIK_FLAG_REGEX ? 'gemastik' : 'custom';
+}
+
 async function loadSubmitConfig() {
   const r = await fetch('/api/submission/config');
   const d = await r.json();
@@ -1973,7 +2165,7 @@ async function loadSubmitConfig() {
   document.getElementById('subToken').value       = d.submit_token    || '';
   document.getElementById('subHost').value        = d.submit_host     || '';
   document.getElementById('subPort').value        = d.submit_port     || 31337;
-  document.getElementById('subRegex').value       = d.flag_regex      || '';
+  setFlagRegexPreset('subFlagPreset', 'subRegex', d.flag_regex);
   document.getElementById('subInterval').value    = d.submit_interval || 5;
   document.getElementById('subLifetime').value    = d.flag_lifetime   || 300;
   updateSubModeUI();
@@ -1987,7 +2179,7 @@ async function saveSubmitConfig() {
     submit_token:    document.getElementById('subToken').value,
     submit_host:     document.getElementById('subHost').value,
     submit_port:     parseInt(document.getElementById('subPort').value) || 31337,
-    flag_regex:      document.getElementById('subRegex').value,
+    flag_regex:      document.getElementById('subRegex').value || GEMASTIK_FLAG_REGEX,
     submit_interval: parseInt(document.getElementById('subInterval').value) || 5,
     flag_lifetime:   parseInt(document.getElementById('subLifetime').value) || 300,
   };
@@ -2129,7 +2321,7 @@ async function loadCompetitionConfig() {
     document.getElementById('compSubmitToken').value  = d.api.submit_token || '';
     document.getElementById('compSubmitHost').value   = d.api.submit_host || '';
     document.getElementById('compSubmitPort').value   = d.api.submit_port || 31337;
-    document.getElementById('compFlagRegex').value    = d.api.flag_regex || '';
+    setFlagRegexPreset('compFlagPreset', 'compFlagRegex', d.api.flag_regex);
 
     // Execution
     document.getElementById('compSubmitEnabled').value  = d.execution.submit_enabled ? '1' : '0';
@@ -2179,7 +2371,7 @@ async function saveCompetitionConfig() {
       submit_token: document.getElementById('compSubmitToken').value.trim(),
       submit_host: document.getElementById('compSubmitHost').value.trim(),
       submit_port: parseInt(document.getElementById('compSubmitPort').value) || 31337,
-      flag_regex: document.getElementById('compFlagRegex').value.trim(),
+      flag_regex: document.getElementById('compFlagRegex').value.trim() || GEMASTIK_FLAG_REGEX,
     },
     execution: {
       tick_count: parseInt(document.getElementById('compTickCount').value) || 0,
@@ -2237,7 +2429,7 @@ async function testCompetitionConnection() {
       submit_token: document.getElementById('compSubmitToken').value.trim(),
       submit_host: document.getElementById('compSubmitHost').value.trim(),
       submit_port: parseInt(document.getElementById('compSubmitPort').value) || 31337,
-      flag_regex: document.getElementById('compFlagRegex').value.trim(),
+      flag_regex: document.getElementById('compFlagRegex').value.trim() || GEMASTIK_FLAG_REGEX,
     },
     execution: {
       tick_count: 100, tick_interval: 60, exploit_timeout: 30, concurrency: 20,
