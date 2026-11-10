@@ -9,7 +9,7 @@ Responsibilities:
   3. Run a periodic submission loop that batches QUEUED flags and sends
      them to the scoring server.
   4. Support three submission modes (matching both reference examples):
-       http_json — POST {"flags": [...]}  (Siberlab / CTFd-style)
+       http_json — POST {"flag": "..."} per flag (Gemastik finals)
        http_form — POST flag=<value>       (simple form POST)
        tcp       — raw TCP line-by-line    (ForcAD / classic gameserver)
   5. Expire flags that are older than flag_lifetime without submitting
@@ -35,6 +35,8 @@ from database import get_db
 from scheduler import broadcaster
 
 logger = logging.getLogger("aufarm.submitter")
+
+GEMASTIK_SUBMIT_URL = "https://gemastik19-finals.siberlab.id/api/flag"
 
 # Serializes all scoreboard submissions so manual/background submission cannot race
 # with the scheduler's per-service batch submission.
@@ -154,74 +156,49 @@ async def _submit_http_json(
     timeout: int = 10,
 ) -> list[tuple[str, str, str]]:
     """
-    POST {"flags": [flag1, flag2, ...]}
+    POST {"flag": flag} once for each flag (Gemastik finals API).
     Returns list of (flag, status, response_text).
 
-    Handles two common response shapes:
-      • {"submitFlagResults": [{"flag":…, "valid":true, "status":"STATUS_OK"}]}
-      • {"status": "accepted"} / plain HTTP 200
+    Reads the API's JSON status/message when present; HTTP 2xx without an
+    explicit failure is treated as accepted.
     """
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}",
-        "X-Team-Token": token,
     }
     results = []
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                json={"flags": flags},
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=timeout),
-            ) as resp:
-                body = await resp.text()
-                http_ok = resp.status < 400
-
-                # Try to parse structured JSON response
+            for flag in flags:
                 try:
-                    import json as _json
-                    data = _json.loads(body)
+                    async with session.post(
+                        url,
+                        json={"flag": flag},
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as resp:
+                        body = await resp.text()
+                        body_lower = body.lower()
+                        try:
+                            import json as _json
+                            data = _json.loads(body)
+                        except (ValueError, TypeError):
+                            data = {}
 
-                    # Siberlab / polriCTF style
-                    sfr = data.get("submitFlagResults") or data.get("results") or []
-                    if sfr and isinstance(sfr, list):
-                        for item in sfr:
-                            flag = item.get("flag", "")
-                            valid = item.get("valid", False)
-                            st = str(item.get("status", ""))
-                            if valid or "OK" in st or "ACCEPT" in st:
-                                flag_st = FlagStatus.ACCEPTED
-                            elif "ALREADY" in st or "DUP" in st or "OWNED" in st:
-                                flag_st = FlagStatus.DUPLICATE
-                            else:
-                                flag_st = FlagStatus.REJECTED
-                            results.append((flag, flag_st, st))
-                        return results
-
-                    # CTFd style: {"success": true}
-                    if "success" in data:
-                        st = FlagStatus.ACCEPTED if data["success"] else FlagStatus.REJECTED
-                        for f in flags:
-                            results.append((f, st, body[:120]))
-                        return results
-
-                except Exception:
-                    pass
-
-                # Fallback: treat HTTP 2xx as accepted
-                body_lower = body.lower()
-                if not http_ok:
-                    flag_st = FlagStatus.ERROR
-                elif any(k in body_lower for k in ("already", "duplicate", "dup", "owned")):
-                    flag_st = FlagStatus.DUPLICATE
-                elif any(k in body_lower for k in ("reject", "invalid", "wrong", "bad")):
-                    flag_st = FlagStatus.REJECTED
-                else:
-                    flag_st = FlagStatus.ACCEPTED
-
-                for f in flags:
-                    results.append((f, flag_st, body[:120]))
+                        status_text = str(data.get("message", data.get("status", body[:120])))
+                        if resp.status >= 400:
+                            flag_st = FlagStatus.ERROR
+                        elif any(k in body_lower for k in ("already", "duplicate", "dup", "owned")):
+                            flag_st = FlagStatus.DUPLICATE
+                        elif any(k in body_lower for k in ("reject", "invalid", "wrong", "bad")):
+                            flag_st = FlagStatus.REJECTED
+                        elif data.get("success") is False or data.get("valid") is False:
+                            flag_st = FlagStatus.REJECTED
+                        else:
+                            flag_st = FlagStatus.ACCEPTED
+                        results.append((flag, flag_st, status_text[:120]))
+                except Exception as exc:
+                    results.append((flag, FlagStatus.ERROR, str(exc)[:120]))
 
     except Exception as exc:
         logger.warning("HTTP submission error: %s", exc)
@@ -327,7 +304,7 @@ async def _submit_batch(
 ) -> list[tuple[str, str, str]]:
     """Route to the right submission backend based on config."""
     mode  = cfg.get("submit_mode", "http_json")
-    url   = cfg.get("submit_url", "")
+    url   = (cfg.get("submit_url") or GEMASTIK_SUBMIT_URL).strip()
     token = cfg.get("submit_token", "")
     host  = cfg.get("submit_host", "")
     port  = int(cfg.get("submit_port", 31337))
@@ -409,7 +386,7 @@ async def test_connection(cfg: Optional[dict] = None) -> tuple[bool, str]:
         cfg = await _get_submit_cfg()
 
     mode = cfg.get("submit_mode", "http_json")
-    url = (cfg.get("submit_url") or "").strip()
+    url = (cfg.get("submit_url") or GEMASTIK_SUBMIT_URL).strip()
     token = (cfg.get("submit_token") or "").strip()
     host = (cfg.get("submit_host") or "").strip()
     port = int(cfg.get("submit_port") or 31337)
@@ -419,7 +396,7 @@ async def test_connection(cfg: Optional[dict] = None) -> tuple[bool, str]:
             return False, "Submit URL is not configured"
         headers = {
             "Authorization": f"Bearer {token}",
-            "X-Team-Token": token,
+            "Content-Type": "application/json",
             "User-Agent": "AuFarm-CTF/1.0",
         }
         try:
@@ -432,7 +409,7 @@ async def test_connection(cfg: Optional[dict] = None) -> tuple[bool, str]:
                 except Exception:
                     async with session.post(
                         url,
-                        json={"flags": []} if mode == "http_json" else {"flag": ""},
+                        json={"flag": ""},
                         headers=headers,
                         timeout=aiohttp.ClientTimeout(total=5),
                     ) as resp:

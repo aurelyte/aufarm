@@ -32,9 +32,9 @@ async def get_competition_config():
 
         return CentralizedConfig(
             team=TeamConfig(
-                team_id=cfg.get("team_id", "1"),
-                team_name=cfg.get("team_name", "MyTeam"),
-                team_ip=cfg.get("team_ip", ""),
+                team_id=cfg.get("team_id", "17"),
+                team_name=cfg.get("team_name", "ION lalala"),
+                team_ip=cfg.get("team_ip", "10.13.37.15"),
                 team_password=_mask_secret(cfg.get("team_password", "")),
             ),
             api=ScoreboardApiConfig(

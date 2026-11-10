@@ -183,7 +183,18 @@
     gap: 10px;
     margin-bottom: 12px;
   }
-  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .target-form-grid {
+    grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+    align-items: end;
+  }
+  .target-form-grid .target-team-group { grid-column: span 2; }
+  .target-form-grid input,
+  .target-form-grid select {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+  }
   label { font-size: 12px; color: var(--muted); }
   input, select, textarea {
     padding: 6px 10px;
@@ -345,6 +356,8 @@
     .sidebar { width: 48px; }
     .sidebar-logo, .nav-section, .nav-label { display: none; }
     .main { padding: 10px; }
+    .target-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .target-form-grid .target-team-group { grid-column: 1 / -1; }
   }
 </style>
 </head>
@@ -648,14 +661,14 @@
             <div class="form-group">
               <label>Submission Protocol / Mode</label>
               <select id="compSubmitMode" onchange="updateCompModeUI()">
-                <option value="http_json">HTTP JSON — POST {"flags": [...]}</option>
+                <option value="http_json">Gemastik API — POST {"flag": "..."}</option>
                 <option value="http_form">HTTP Form — POST flag=value</option>
                 <option value="tcp">Raw TCP — Line-by-line socket</option>
               </select>
             </div>
             <div class="form-group" id="compUrlGroup">
               <label>Scoreboard Submit URL</label>
-              <input id="compSubmitUrl" placeholder="http://10.10.0.1/api/v1/flags">
+              <input id="compSubmitUrl" placeholder="https://gemastik19-finals.siberlab.id/api/flag">
             </div>
             <div class="form-group" id="compTokenGroup">
               <label>API Key / Team Token</label>
@@ -840,7 +853,7 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
 
         <div class="tab-bar">
           <div class="tab active" data-tab="target-list">List</div>
-          <div class="tab" data-tab="target-add">+ Add Target</div>
+          <div class="tab" data-tab="target-add">+ Add Service Port</div>
         </div>
 
         <div class="tab-content active" id="tab-target-list">
@@ -858,14 +871,14 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
         </div>
 
         <div class="tab-content" id="tab-target-add">
-          <div class="form-grid">
-            <div class="form-group">
-              <label>Name *</label>
-              <input id="tgtName" placeholder="Team 1">
+          <div class="form-grid target-form-grid">
+            <div class="form-group target-team-group">
+              <label>Opponent team *</label>
+              <select id="tgtTeam" onchange="updateTargetTeamIp()"></select>
             </div>
             <div class="form-group">
-              <label>Host / IP *</label>
-              <input id="tgtHost" placeholder="10.10.10.11">
+              <label>Team IP (fixed)</label>
+              <input id="tgtHost" readonly>
             </div>
             <div class="form-group">
               <label>Port</label>
@@ -884,7 +897,7 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
             </div>
           </div>
           <div class="form-actions">
-            <button class="btn-green" onclick="createTarget()">➕ Add Target</button>
+            <button class="btn-green" onclick="createTarget()">➕ Add Service Port</button>
           </div>
         </div>
       </div>
@@ -940,14 +953,14 @@ print('AUFARM_RESULT ' + json.dumps({'flags': []}))
           <div class="form-group">
             <label>Mode</label>
             <select id="subMode" onchange="updateSubModeUI()">
-              <option value="http_json">HTTP JSON — POST {"flags":[…]}</option>
+              <option value="http_json">Gemastik API — POST {"flag":"…"}</option>
               <option value="http_form">HTTP Form — POST flag=…</option>
               <option value="tcp">TCP — raw line per flag</option>
             </select>
           </div>
           <div class="form-group" id="subUrlGroup">
             <label>Submit URL</label>
-            <input id="subUrl" placeholder="https://scoreboard/api/v1/flags">
+            <input id="subUrl" placeholder="https://gemastik19-finals.siberlab.id/api/flag">
           </div>
           <div class="form-group" id="subTokenGroup">
             <label>API Token / Bearer</label>
@@ -1767,7 +1780,39 @@ function closeExploitModal() {
 }
 
 // ── Targets ───────────────────────────────────────────────────────────────────
+const opponentTeams = [
+  {name:'Maaf kami belum sempat diskusi namanya karena sibuk', ip:'10.13.37.1'},
+  {name:'HCS Ambarawa Express', ip:'10.13.37.2'},
+  {name:'HCS infinits park reborn', ip:'10.13.37.3'},
+  {name:'nama tim kita ini aja', ip:'10.13.37.4'},
+  {name:'Coba coba', ip:'10.13.37.5'},
+  {name:'Sembarang Wes', ip:'10.13.37.6'},
+  {name:'Fokus KKN ngapain ctf gak dapet apa apa', ip:'10.13.37.7'},
+  {name:'Liburan DiRumah', ip:'10.13.37.8'},
+  {name:'PETIR mas aska butuh tiket karna dari singapura', ip:'10.13.37.9'},
+  {name:'PETIR Pengen Main Maimai Cuman Ga Ada Credit', ip:'10.13.37.10'},
+  {name:'DOSCOM Zero Day Scholars', ip:'10.13.37.11'},
+  {name:'404 Rest Not Found', ip:'10.13.37.12'},
+  {name:'ctfhoyahoya', ip:'10.13.37.13'},
+  {name:'hmcc apaya', ip:'10.13.37.14'},
+  {name:'Baru Kenal', ip:'10.13.37.16'},
+  {name:'CSUI frontshots', ip:'10.13.37.17'},
+  {name:'Pengen gemastik', ip:'10.13.37.18'},
+  {name:'Mount Bentang', ip:'10.13.37.19'},
+  {name:'TelSec This is my final', ip:'10.13.37.20'},
+];
+
+function updateTargetTeamIp() {
+  const team = opponentTeams[parseInt(document.getElementById('tgtTeam').value, 10)];
+  document.getElementById('tgtHost').value = team ? team.ip : '';
+}
+
 async function loadTargets() {
+  const teamSelect = document.getElementById('tgtTeam');
+  if (teamSelect && !teamSelect.options.length) {
+    teamSelect.innerHTML = opponentTeams.map((team, i) => `<option value="${i}">${esc(team.name)}</option>`).join('');
+    updateTargetTeamIp();
+  }
   const r = await fetch('/api/targets');
   const targets = await r.json();
   renderTargetsTable(targets);
@@ -1792,13 +1837,16 @@ function renderTargetsTable(targets) {
 }
 
 async function createTarget() {
-  const name    = document.getElementById('tgtName').value.trim();
-  const host    = document.getElementById('tgtHost').value.trim();
+  const teamIndex = parseInt(document.getElementById('tgtTeam').value, 10);
+  const team   = opponentTeams[teamIndex];
+  const name   = team?.name || '';
+  const host   = team?.ip || '';
   const port    = parseInt(document.getElementById('tgtPort').value) || 0;
   const service = document.getElementById('tgtService').value.trim();
   const enabled = document.getElementById('tgtEnabled').value === '1';
 
-  if (!name || !host) { alert('Name and host are required'); return; }
+  if (!team) { alert('Choose an opponent team'); return; }
+  if (!port) { alert('Service port is required'); return; }
 
   const r = await fetch('/api/targets', {
     method: 'POST',
@@ -1808,7 +1856,7 @@ async function createTarget() {
   if (!r.ok) { alert('Failed: ' + await r.text()); return; }
   await loadTargets();
   document.querySelector('[data-tab="target-list"]').click();
-  addLog(`✅ Target "${name}" (${host}) added`, 'success');
+  addLog(`✅ Service port ${port} for "${name}" (${host}) added`, 'success');
 }
 
 async function toggleTarget(id, currentEnabled) {

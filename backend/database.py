@@ -10,6 +10,28 @@ import os
 
 DB_PATH = os.getenv("DB_PATH", "/data/aufarm.db")
 
+OPPONENTS = {
+    "10.13.37.1": "Maaf kami belum sempat diskusi namanya karena sibuk",
+    "10.13.37.2": "HCS Ambarawa Express",
+    "10.13.37.3": "HCS infinits park reborn",
+    "10.13.37.4": "nama tim kita ini aja",
+    "10.13.37.5": "Coba coba",
+    "10.13.37.6": "Sembarang Wes",
+    "10.13.37.7": "Fokus KKN ngapain ctf gak dapet apa apa",
+    "10.13.37.8": "Liburan DiRumah",
+    "10.13.37.9": "PETIR mas aska butuh tiket karna dari singapura",
+    "10.13.37.10": "PETIR Pengen Main Maimai Cuman Ga Ada Credit",
+    "10.13.37.11": "DOSCOM Zero Day Scholars",
+    "10.13.37.12": "404 Rest Not Found",
+    "10.13.37.13": "ctfhoyahoya",
+    "10.13.37.14": "hmcc apaya",
+    "10.13.37.16": "Baru Kenal",
+    "10.13.37.17": "CSUI frontshots",
+    "10.13.37.18": "Pengen gemastik",
+    "10.13.37.19": "Mount Bentang",
+    "10.13.37.20": "TelSec This is my final",
+}
+
 
 async def get_db() -> aiosqlite.Connection:
     """Open a new database connection (row_factory set to dict-like Row)."""
@@ -111,9 +133,9 @@ INSERT OR IGNORE INTO farm_config (key, value) VALUES
     ('flag_regex',        '[A-Za-z0-9_]{2,16}\\{[A-Za-z0-9_+=\\-/\\.]{8,}\\}'),
     ('submit_interval',   '5'),
     ('flag_lifetime',     '300'),
-    ('team_id',           '1'),
-    ('team_name',         'MyTeam'),
-    ('team_ip',           ''),
+    ('team_id',           '17'),
+    ('team_name',         'ION lalala'),
+    ('team_ip',           '10.13.37.15'),
     ('team_password',     '');
 
 """
@@ -139,13 +161,28 @@ async def init_db() -> None:
 
         # Ensure team config defaults
         team_defaults = [
-            ("team_id", "1"),
-            ("team_name", "MyTeam"),
-            ("team_ip", ""),
+            ("team_id", "17"),
+            ("team_name", "ION lalala"),
+            ("team_ip", "10.13.37.15"),
             ("team_password", ""),
             ("collection_deadline", "30"),
         ]
         for k, v in team_defaults:
             await db.execute("INSERT OR IGNORE INTO farm_config (key, value) VALUES (?, ?)", (k, v))
+
+        # Replace the application's untouched sample identity with the supplied team.
+        sample_values = {"team_id": "1", "team_name": "MyTeam", "team_ip": ""}
+        for key, sample in sample_values.items():
+            async with db.execute("SELECT value FROM farm_config WHERE key = ?", (key,)) as cur:
+                row = await cur.fetchone()
+            if row and row["value"] == sample:
+                value = {"team_id": "17", "team_name": "ION lalala", "team_ip": "10.13.37.15"}[key]
+                await db.execute("UPDATE farm_config SET value = ? WHERE key = ?", (value, key))
+
+        # Normalize saved targets for this competition while retaining service ports.
+        for host, name in OPPONENTS.items():
+            await db.execute("UPDATE targets SET name = ?, host = ? WHERE host = ? OR name = ?", (name, host, host, name))
+        await db.execute("UPDATE targets SET name = 'ION lalala', host = '10.13.37.15', enabled = 0 WHERE host = '10.13.37.15' OR name = 'ION lalala'")
+        await db.execute("DELETE FROM targets WHERE host = '10.13.37.21' OR name = 'NPC Team'")
 
         await db.commit()

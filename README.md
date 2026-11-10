@@ -292,17 +292,16 @@ Regex Extraction from each target stdout
       ↓
 Deduplication via SQLite `flags` table
       ↓
-Batch submission after collection for that service completes
+Submit each collected flag individually after collection for that service completes
       ↓
 Competition Scoring Server (HTTP JSON / Form / TCP)
 ```
 
 ### Supported Submission Modes
 
-1. **HTTP JSON** (`http_json`) — Default for platforms like Siberlab (`polriCTF`) and CTFd:
-   - Request: `POST {"flags": ["flag1", "flag2"]}`
-   - Headers: `Authorization: Bearer <TOKEN>` and `X-Team-Token: <TOKEN>`
-   - Response parsing: parses `submitFlagResults` or `results` array, or checks for `valid: true` / status strings (`STATUS_OK`, `ACCEPTED`, `DUP`, `REJECTED`).
+1. **HTTP JSON** (`http_json`) — Gemastik finals API:
+   - Request: `POST https://gemastik19-finals.siberlab.id/api/flag` with `{"flag": "..."}` for each flag.
+   - Headers: `Authorization: Bearer <TOKEN>` and `Content-Type: application/json`.
 2. **HTTP Form** (`http_form`) — Simple web form:
    - Request: `POST flag=<flag>`
 3. **TCP** (`tcp`) — Raw TCP socket (e.g., Destructive Farm / ForcAD):
@@ -313,6 +312,7 @@ Competition Scoring Server (HTTP JSON / Form / TCP)
 Go to **Competition Config** for the unified configuration window:
 - **Team Identity**: team ID/name, own team IP, and team secret. Targets matching the own team IP are excluded from exploit execution.
 - **Scoreboard API**: submission mode (`HTTP JSON`, `HTTP Form`, or `TCP`), submit URL/host/port, API token, and flag regex.
+- **Targets**: add a service port for an opponent team. Each team has a fixed VPN IP; adding another service only adds another port. The local ION team and the admin NPC are excluded from the opponent selector.
 - **Execution & Batch**: tick count/interval, concurrency, exploit timeout, collection deadline, auto-submit toggle, submit retry interval, and flag lifetime.
 - **Save Configuration**: persists all settings to SQLite-backed farm config.
 - **Test Scoreboard Connection**: probes the configured scoreboard without submitting real flags.

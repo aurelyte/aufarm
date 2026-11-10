@@ -121,9 +121,9 @@ class ResultOut(BaseModel):
 # ── Centralized Competition Config Models ─────────────────────────────────────
 
 class TeamConfig(BaseModel):
-    team_id: str = "1"
-    team_name: str = "MyTeam"
-    team_ip: str = ""
+    team_id: str = "17"
+    team_name: str = "ION lalala"
+    team_ip: str = "10.13.37.15"
     team_password: str = ""
 
 
